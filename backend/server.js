@@ -499,5 +499,11 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
 const { mountPortal } = await import("./portal/index.js");
 mountPortal(app);
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// On Cloud Functions (K_SERVICE is set) the platform serves the exported app; locally we listen.
+if (!process.env.K_SERVICE) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+}
+
+export default app;
+

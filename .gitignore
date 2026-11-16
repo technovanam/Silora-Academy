@@ -20,3 +20,7 @@ whisper/models/*
 
 # Business documents (not code)
 *.pdf
+
+# Generated Cloud Functions bundle (backend/scripts/build-api.mjs)
+deploy/
+.firebase/

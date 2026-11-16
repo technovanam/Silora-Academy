@@ -127,6 +127,16 @@ export async function sendAttendanceReminders() {
   return ids.length;
 }
 
+// The same jobs, by name, for Cloud Scheduler (functions entry in scripts/build-api.mjs)
+export const JOBS = {
+  minute: async () => { await sendClassReminders(); await publishScheduled(); },
+  retry: retryFailed,
+  hourly: async () => { await cleanupRecordings(); await cleanupMessageFiles(); },
+  nightly: async () => { await createBackup("Automatic daily backup"); await retentionCleanup(); },
+  alerts: sendInactivityAlerts,
+  attendance: sendAttendanceReminders,
+};
+
 export function startJobs() {
   if (!config.enableJobs) {
     console.log("⏸  Portal jobs disabled (ENABLE_JOBS=false)");

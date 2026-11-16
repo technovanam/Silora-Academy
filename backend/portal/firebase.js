@@ -14,8 +14,10 @@ function init() {
   if (getApps().length) return getApps()[0];
   const options = { projectId: config.projectId, storageBucket: config.storageBucket };
   if (!config.useEmulators) {
-    options.credential =
-      config.serviceAccountPath && fs.existsSync(config.serviceAccountPath)
+    // SERVICE_ACCOUNT_JSON (a Secret Manager secret in the cloud) or a key file path locally
+    options.credential = process.env.SERVICE_ACCOUNT_JSON
+      ? cert(JSON.parse(process.env.SERVICE_ACCOUNT_JSON))
+      : config.serviceAccountPath && fs.existsSync(config.serviceAccountPath)
         ? cert(JSON.parse(fs.readFileSync(config.serviceAccountPath, "utf8")))
         : applicationDefault();
   }
