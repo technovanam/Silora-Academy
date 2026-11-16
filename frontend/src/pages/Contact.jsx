@@ -1,295 +1,197 @@
-import React, { useRef, useState } from 'react';
-import { Building2, Mail, Globe, Phone } from "lucide-react";
-import { FaFacebookF, FaInstagram, FaLinkedinIn, FaWhatsapp, FaTelegram } from 'react-icons/fa6';
+import React, { useRef, useState } from "react";
+import { Mail, Globe, Phone, Send, ArrowDown, GraduationCap, Clock, BookOpenCheck } from "lucide-react";
+import { FaFacebookF, FaInstagram, FaWhatsapp, FaTelegram } from "react-icons/fa6";
 import { API_BASE_URL } from "../config";
+import { SITE, SOCIAL_LINKS, WHATSAPP_URL } from "../data/site";
+import { Container } from "../components/ui/Section";
+import LightHero from "../components/ui/LightHero";
+import { Field } from "../components/ui/Fields";
+import Alert from "../components/ui/Alert";
+import { btn, inputClass } from "../components/ui/styles";
 
-
-// ============================================================
-// CONTACT INFO ITEM COMPONENT
-// ============================================================
-
-const ContactInfoItem = ({ icon, title, value, href }) => {
-  const content = href ? (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-slate-700 hover:text-[#e8b112] transition-colors break-all font-medium"
-    >
-      {value}
-    </a>
-  ) : (
-    <p className="text-slate-700 break-all font-medium">{value}</p>
-  );
-
-  return (
-    <div className="group hover:bg-[#e8b112]/10 p-3 sm:p-4 rounded-xl transition-all duration-300 cursor-pointer">
-      <div className="flex items-start gap-3 sm:gap-4">
-        <div className="flex-shrink-0">
-          <div className="bg-gradient-to-br from-[#e8b112] to-[#d4a010] text-[#0a2d4a] rounded-xl w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300">
-            {icon}
-          </div>
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-bold text-slate-900 mb-1">{title}</h3>
-          {content}
-        </div>
-      </div>
-    </div>
-  );
-};
+// Small trust chips under the hero buttons (no contact details in the hero)
+const TRUST_CHIPS = [
+  [GraduationCap, "Free demo class"],
+  [Clock, "Reply within a day"],
+  [BookOpenCheck, "All major boards"],
+];
 
 // ============================================================
-// MAIN CONTACT COMPONENT
+// CONTACT CHANNELS
+// ============================================================
+
+const CHANNELS = [
+  { Icon: Mail, title: "Email", value: SITE.email, href: `mailto:${SITE.email}` },
+  { Icon: Phone, title: "Phone / WhatsApp", value: SITE.phone, href: SITE.phoneHref },
+  { Icon: Globe, title: "Website", value: SITE.website, href: SITE.websiteHref },
+];
+
+const SOCIALS = [
+  { href: SOCIAL_LINKS.facebook, label: "Facebook", Icon: FaFacebookF },
+  { href: SOCIAL_LINKS.instagram, label: "Instagram", Icon: FaInstagram },
+  { href: SOCIAL_LINKS.whatsapp, label: "WhatsApp", Icon: FaWhatsapp },
+  { href: SOCIAL_LINKS.telegram, label: "Telegram", Icon: FaTelegram },
+];
+
+// ============================================================
+// PAGE
 // ============================================================
 
 const Contact = () => {
   const form = useRef();
-  const [formStatus, setFormStatus] = useState('');
+  // status: "" | "sending" | "success" | "error"
+  const [status, setStatus] = useState("");
 
   const sendEmail = async (e) => {
     e.preventDefault();
-    setFormStatus('Sending...');
+    setStatus("sending");
 
     try {
       const formData = new FormData(form.current);
-
       const res = await fetch(`${API_BASE_URL}/api/contact`, {
-        method: 'POST',
+        method: "POST",
         body: formData,
       });
 
-      const data = await res.json();
-
       if (res.ok) {
-        setFormStatus('Message sent successfully!');
+        setStatus("success");
         form.current.reset();
       } else {
-        setFormStatus('Failed to send message. Please try again.');
+        setStatus("error");
       }
     } catch (error) {
-      console.error('Error:', error);
-      setFormStatus('Failed to send message. Please try again.');
+      console.error("Error:", error);
+      setStatus("error");
     }
   };
+
   return (
     <div className="bg-white">
-      {/* Hero Section */}
-      <section className="flex items-center justify-center text-center pt-4 sm:pt-6 pb-8 sm:pb-12 md:pb-16 px-4 sm:px-6 bg-white">
-        <div
-          className="relative rounded-2xl sm:rounded-3xl shadow-lg max-w-9xl w-full text-center py-16 sm:py-24 md:py-35 px-6 sm:px-12 md:px-24 bg-cover overflow-hidden"
-          style={{
-            backgroundImage: "url(https://res.cloudinary.com/dnmvriw3e/image/upload/v1761212329/contact_dqk3ur.jpg)",
-            backgroundPosition: 'center 25%',
-          }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-[#0a2d4a]/80 to-[#0a2d4a]/70"></div>
+      {/* ===================== HERO (centered + photo strip) ===================== */}
+      <LightHero
+        eyebrow="Contact us"
+        title="Start your"
+        highlight="learning journey"
+        subtitle="We are here to help you learn better and grow stronger. Get in touch with us today."
+        actions={
+          <>
+            <a href="#contact-form" className={btn("primary", "lg", "w-full sm:w-auto")}>
+              Send a message <ArrowDown className="h-4 w-4" />
+            </a>
+            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className={btn("outline", "lg", "w-full sm:w-auto")}>
+              <FaWhatsapp className="h-4 w-4 text-[#25D366]" /> Chat on WhatsApp
+            </a>
+          </>
+        }
+      >
+        <ul className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+          {TRUST_CHIPS.map(([Icon, label]) => (
+            <li key={label} className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-navy shadow-sm">
+              <Icon className="h-4 w-4 text-brand-hover" /> {label}
+            </li>
+          ))}
+        </ul>
+      </LightHero>
 
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 bg-white text-[#0a2d4a] font-semibold px-3 sm:px-4 py-1.5 sm:py-2 rounded-full shadow-sm border border-[#e8b112] mb-4 sm:mb-6">
-              <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#e8b112]" />
-              <span className="text-xs sm:text-md tracking-wide uppercase">
-                Contact Us
-              </span>
-            </div>
+      <section id="contact-form" className="scroll-mt-16 py-14 sm:py-16 lg:py-24">
+        <Container>
+          <div className="grid gap-4 lg:grid-cols-12">
+            {/* Contact info – navy panel */}
+            <div className="relative overflow-hidden rounded-[2rem] bg-navy p-6 sm:p-10 lg:col-span-5">
+              <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-brand/20 blur-[90px]" />
+              <h2 className="relative text-3xl font-bold !text-white sm:text-4xl">Get in touch</h2>
+              <p className="relative mt-3 text-slate-300">
+                We'd love to hear from you. Reach out through any of these channels.
+              </p>
 
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl max-w-7xl mx-auto font-bold text-white leading-tight mb-4 sm:mb-6 px-2">
-              Start Your <br />
-              <span className="italic text-[#e8b112]">Learning Journey</span> with Us
-            </h1>
-
-            <p className="text-base sm:text-lg text-white/90 max-w-2xl mx-auto px-4">
-              We are here to help you learn better and grow stronger. Get in touch with us today.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/* CONTACT FORM & INFO SECTION */}
-      {/* ============================================================ */}
-
-      <section className="py-6 sm:py-8 bg-white">
-        <div className="container mx-auto px-4 sm:px-6 md:px-12 lg:px-24">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 lg:gap-16 items-start">
-            {/* Left: Form */}
-            <div className="lg:col-span-1 flex flex-col justify-between">
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-6 sm:mb-8">
-                Send Us a Message
-              </h2>
-              <form
-                ref={form}
-                onSubmit={sendEmail}
-                className="bg-slate-50 p-5 sm:p-6 md:p-8 rounded-xl shadow-sm border border-gray-100"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-                  <div>
-                    <label htmlFor="user_name" className="block text-sm font-medium text-gray-700 mb-1">
-                      Name
-                    </label>
-                    <input
-                      placeholder="Your Name"
-                      type="text"
-                      name="user_name"
-                      id="user_name"
-                      required
-                      className="block w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-[#e8b112] focus:border-[#e8b112] text-sm sm:text-base"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="user_email" className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
-                    </label>
-                    <input
-                      placeholder="Your Email"
-                      type="email"
-                      name="user_email"
-                      id="user_email"
-                      required
-                      className="block w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-[#e8b112] focus:border-[#e8b112] text-sm sm:text-base"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label htmlFor="user_phone" className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone
-                    </label>
-                    <input
-                      placeholder="Your Phone Number"
-                      type="tel"
-                      name="user_phone"
-                      id="user_phone"
-                      className="block w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-[#e8b112] focus:border-[#e8b112] text-sm sm:text-base"
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-4 sm:mb-6">
-                  <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
-                    Message
-                  </label>
-                  <textarea
-                    placeholder="How can we help you?"
-                    name="message"
-                    id="message"
-                    rows="6"
-                    required
-                    className="block w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-[#e8b112] focus:border-[#e8b112] text-sm sm:text-base"
-                  ></textarea>
-                </div>
-
-                <div className="flex justify-center">
-                  <button
-                    type="submit"
-                    className="w-full sm:w-auto py-2.5 sm:py-3 px-8 sm:px-10 text-[#0a2d4a] font-bold rounded-md bg-[#e8b112] hover:bg-[#d4a010] transition-colors text-sm sm:text-base shadow-md"
+              <div className="relative mt-8 space-y-3">
+                {CHANNELS.map(({ Icon, title, value, href }) => (
+                  <a
+                    key={title}
+                    href={href}
+                    target={href.startsWith("http") ? "_blank" : undefined}
+                    rel="noopener noreferrer"
+                    className="group flex items-center gap-4 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10 transition hover:bg-white/10 hover:ring-brand/50"
                   >
-                    Send Message
-                  </button>
-                </div>
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand">
+                      <Icon className="h-5 w-5 text-navy" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium uppercase tracking-wider text-slate-400">{title}</span>
+                      <span className="block truncate font-medium text-white">{value}</span>
+                    </span>
+                  </a>
+                ))}
+              </div>
 
-                {formStatus && (
-                  <div className={`mt-4 sm:mt-6 p-3 sm:p-4 rounded-lg flex items-center justify-center gap-2 ${formStatus.includes('successfully')
-                    ? 'bg-green-50 border border-green-200'
-                    : 'bg-red-50 border border-red-200'
-                    }`}>
-                    {formStatus.includes('successfully') ? (
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    )}
-                    <p className={`text-xs sm:text-sm font-semibold ${formStatus.includes('successfully')
-                      ? 'text-green-800'
-                      : 'text-red-800'
-                      }`}>
-                      {formStatus}
-                    </p>
-                  </div>
-                )}
-              </form>
-            </div>
-
-            {/* Right: Contact Info */}
-            <div className="lg:col-span-1 flex flex-col">
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-6 sm:mb-8">
-                Get in Touch
-              </h2>
-              <div className="p-5 sm:p-6 md:p-8 bg-white rounded-xl">
-                <p className="text-slate-600 mb-4 text-sm sm:text-base">
-                  We'd love to hear from you. Reach out to us through any of these channels.
-                </p>
-                <div className="space-y-2">
-                  <ContactInfoItem
-                    icon={<Mail className="w-5 h-5 sm:w-6 sm:h-6" />}
-                    title="Email Address"
-                    value="info@siloraacademy.com"
-                  />
-                  <ContactInfoItem
-                    icon={<Globe className="w-5 h-5 sm:w-6 sm:h-6" />}
-                    title="Website"
-                    value="www.siloraacademy.com"
-                  />
-                  <ContactInfoItem
-                    icon={<Phone className="w-5 h-5 sm:w-6 sm:h-6" />}
-                    title="Phone / WhatsApp"
-                    value="+91 9606840892"
-                  />
-                </div>
-
-                {/* Social Links */}
-                <div className="mt-6 pt-4 border-t border-gray-200">
-                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 mb-3 uppercase tracking-wide">
-                    Follow Us
-                  </h3>
-                  <div className="flex flex-wrap gap-2 sm:gap-3">
+              <div className="relative mt-10 border-t border-white/10 pt-6">
+                <h3 className="text-xs font-semibold uppercase tracking-wider !text-slate-400">Follow us</h3>
+                <div className="mt-3 flex gap-2">
+                  {SOCIALS.map(({ href, label, Icon }) => (
                     <a
-                      href="https://www.facebook.com/siloraacademy"
+                      key={label}
+                      href={href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      aria-label="Facebook"
-                      className="bg-white p-2.5 sm:p-3 rounded-xl shadow-md hover:shadow-lg hover:bg-blue-600 transition-all duration-300 group hover:scale-105"
+                      aria-label={label}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-slate-300 ring-1 ring-white/10 transition hover:bg-brand hover:text-navy hover:ring-brand"
                     >
-                      <FaFacebookF className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 group-hover:text-white" />
+                      <Icon size={15} />
                     </a>
-                    <a
-                      href="https://www.instagram.com/siloraacademy"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Instagram"
-                      className="bg-white p-2.5 sm:p-3 rounded-xl shadow-md hover:shadow-lg hover:bg-pink-600 transition-all duration-300 group hover:scale-105"
-                    >
-                      <FaInstagram className="w-4 h-4 sm:w-5 sm:h-5 text-pink-600 group-hover:text-white" />
-                    </a>
-                    <a
-                      href="https://wa.me/+919606840892?text=Hello%20Silora%20Academy!%20I%20would%20like%20to%20learn%20more%20about%20your%20tutoring%20services."
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="WhatsApp"
-                      className="bg-white p-2.5 sm:p-3 rounded-xl shadow-md hover:shadow-lg hover:bg-green-600 transition-all duration-300 group hover:scale-105"
-                    >
-                      <FaWhatsapp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 group-hover:text-white" />
-                    </a>
-                    <a
-                      href="https://t.me/siloraacademy"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Telegram"
-                      className="bg-white p-2.5 sm:p-3 rounded-xl shadow-md hover:shadow-lg hover:bg-blue-500 transition-all duration-300 group hover:scale-105"
-                    >
-                      <FaTelegram className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 group-hover:text-white" />
-                    </a>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
+
+            {/* Form */}
+            <div className="lg:col-span-7">
+              <form
+                ref={form}
+                onSubmit={sendEmail}
+                className="h-full rounded-[2rem] border border-line bg-surface p-6 sm:p-10"
+              >
+                <h2 className="text-3xl font-bold sm:text-4xl">Send us a message</h2>
+                <p className="mt-1 text-sm text-muted">We usually reply within one working day.</p>
+
+                <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                  <Field label="Name" htmlFor="user_name">
+                    <input id="user_name" name="user_name" type="text" required placeholder="Your name" className={inputClass} />
+                  </Field>
+                  <Field label="Email" htmlFor="user_email">
+                    <input id="user_email" name="user_email" type="email" required placeholder="you@example.com" className={inputClass} />
+                  </Field>
+                  <Field label="Phone (optional)" htmlFor="user_phone" className="sm:col-span-2">
+                    <input id="user_phone" name="user_phone" type="tel" placeholder="Your phone number" className={inputClass} />
+                  </Field>
+                  <Field label="Message" htmlFor="message" className="sm:col-span-2">
+                    <textarea
+                      id="message"
+                      name="message"
+                      rows="5"
+                      required
+                      placeholder="How can we help you?"
+                      className={`${inputClass} resize-y`}
+                    />
+                  </Field>
+                </div>
+
+                {status === "success" && (
+                  <div className="mt-5"><Alert type="success">Message sent successfully! We'll get back to you soon.</Alert></div>
+                )}
+                {status === "error" && (
+                  <div className="mt-5"><Alert type="error">Failed to send message. Please try again.</Alert></div>
+                )}
+
+                <button type="submit" disabled={status === "sending"} className={btn("primary", "lg", "mt-6 w-full sm:w-auto")}>
+                  {status === "sending" ? "Sending…" : "Send message"}
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        </Container>
       </section>
-    </div >
+    </div>
   );
 };
 

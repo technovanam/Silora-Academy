@@ -1,203 +1,121 @@
-import React, { useState } from "react";
-import { NavLink, Link } from "react-router-dom";
-const StudentDemoModal = React.lazy(() => import("./StudentDemoModal"));
-const TutorApplicationModal = React.lazy(() => import("./TutorApplicationModal"));
+import React, { useEffect, useState } from "react";
+import { NavLink, Link, useLocation } from "react-router-dom";
+import { ArrowRight, Menu, X } from "lucide-react";
+import { SITE, NAV_LINKS } from "../data/site";
+import { btn, CONTAINER } from "./ui/styles";
+
+// ============================================================
+// HEADER – floating pill
+// A rounded white bar that floats just below the top of the screen.
+// Total height stays 64px (mobile) / 72px (desktop) so page offsets don't change.
+// ============================================================
 
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
-  const [isTutorModalOpen, setIsTutorModalOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const { pathname } = useLocation();
+
+  // Stronger shadow once the page is scrolled
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Close the mobile menu whenever the route changes
+  useEffect(() => setIsOpen(false), [pathname]);
 
   const navLinkClasses = ({ isActive }) =>
-    `transition-colors duration-300 whitespace-nowrap text-base md:text-lg ${isActive
-      ? "text-[#e8b112] font-semibold"
-      : "text-slate-600 hover:text-[#e8b112]"
+    `rounded-full px-3.5 py-2 text-[15px] font-medium transition-colors lg:px-4 ${
+      isActive ? "bg-navy text-white" : "text-slate-500 hover:bg-surface hover:text-navy"
     }`;
 
   const mobileNavLinkClasses = ({ isActive }) =>
-    `text-xl whitespace-nowrap ${isActive
-      ? "text-[#e8b112] font-semibold"
-      : "text-slate-600 hover:text-[#e8b112]"
+    `block rounded-xl px-4 py-3 text-base font-medium transition-colors ${
+      isActive ? "bg-surface text-navy" : "text-slate-600 hover:bg-surface hover:text-navy"
     }`;
 
-  const closeMenu = () => setIsOpen(false);
-
-  const openStudentModal = () => {
-    closeMenu();
-    setIsStudentModalOpen(true);
-  };
-
-  const openTutorModal = () => {
-    closeMenu();
-    setIsTutorModalOpen(true);
-  };
-
   return (
-    <header className="bg-white shadow-sm fixed top-0 left-0 right-0 z-50">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-18 md:h-20 min-w-0">
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 pt-2 lg:pt-3">
+      <div className={CONTAINER}>
+        <div
+          className={`pointer-events-auto flex h-14 items-center justify-between gap-3 rounded-full border border-line bg-white/90 pl-4 pr-2 backdrop-blur-md transition-shadow duration-300 lg:h-[60px] lg:pl-5 ${
+            scrolled || isOpen
+              ? "shadow-[0_12px_30px_-12px_rgba(10,45,74,0.28)]"
+              : "shadow-[0_6px_20px_-12px_rgba(10,45,74,0.18)]"
+          }`}
+        >
+          {/* Logo */}
+          <Link to="/" className="flex shrink-0 items-center" aria-label={`${SITE.name} Home`}>
+            <img
+              src={SITE.logo}
+              alt={`${SITE.name} Logo`}
+              className="h-9 w-auto object-contain mix-blend-multiply lg:h-10"
+              width="60"
+              height="60"
+              loading="eager"
+              fetchPriority="high"
+            />
+          </Link>
 
-          {/* Left: Logo */}
-          <div className="flex-shrink-0 min-w-0">
-            <Link
-              to="/"
-              className="flex items-center space-x-2"
-              onClick={closeMenu}
-              aria-label="Silora Academy Home"
-            >
-                <img
-                  src="https://res.cloudinary.com/dnmvriw3e/image/upload/v1770561256/Logo_qe3dyz.jpg"
-                  alt="Silora Academy Logo"
-                  className="h-10 sm:h-12 md:h-14 w-auto object-contain"
-                  width="60"
-                  height="60"
-                  loading="eager"
-                  fetchPriority="high"
-                />
-            </Link>
-          </div>
-
-          {/* Center Navigation (flexible width) */}
-          <nav className="hidden md:flex justify-center flex-1 min-w-0">
-            <ul className="flex items-center space-x-4 md:space-x-6 lg:space-x-8">
-              <li>
-                <NavLink to="/" className={navLinkClasses}>
-                  Home
-                </NavLink>
-              </li>
-              <li>
-                <NavLink to="/about" className={navLinkClasses}>
-                  About&nbsp;Us
-                </NavLink>
-              </li>
-              <li>
-                <NavLink to="/services" className={navLinkClasses}>
-                  Services
-                </NavLink>
-              </li>
-              <li>
-                <NavLink to="/contact" className={navLinkClasses}>
-                  Contact
-                </NavLink>
-              </li>
+          {/* Desktop navigation */}
+          <nav className="hidden md:block" aria-label="Main">
+            <ul className="flex items-center gap-0.5">
+              {NAV_LINKS.map((l) => (
+                <li key={l.to}>
+                  <NavLink to={l.to} end={l.to === "/"} className={navLinkClasses}>
+                    {l.label}
+                  </NavLink>
+                </li>
+              ))}
             </ul>
           </nav>
 
-          {/* Right-side Actions */}
-          <div className="hidden md:flex items-center justify-end flex-shrink-0 space-x-4">
-            <button
-              onClick={openTutorModal}
-              className="text-slate-600 hover:text-[#e8b112] font-medium text-base lg:text-lg transition-colors whitespace-nowrap"
-            >
+          {/* Desktop actions */}
+          <div className="hidden items-center gap-1 md:flex">
+            <Link to="/join-tutor" className={btn("ghost", "md", "hidden lg:inline-flex")}>
               Join as Tutor
-            </button>
-            <button
-              onClick={openStudentModal}
-              className="inline-flex items-center px-4 lg:px-5 py-2 rounded-full bg-[#e8b112] text-[#0a2d4a] text-base lg:text-lg font-semibold hover:bg-[#d4a010] transition whitespace-nowrap"
-            >
-              <span>Book a demo</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="ml-2 lg:ml-3 h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M14 5l7 7m0 0l-7 7m7-7H3"
-                />
-              </svg>
-            </button>
+            </Link>
+            <Link to="/book-demo" className={btn("primary", "md")}>
+              Book a demo <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
 
-          {/* Mobile Menu Toggle */}
-          <div className="md:hidden">
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="text-slate-600 hover:text-[#e8b112] focus:outline-none p-2"
-              aria-label="Toggle menu"
-            >
-              <svg
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d={
-                    isOpen
-                      ? "M6 18L18 6M6 6l12 12"
-                      : "M4 6h16M4 12h16M4 18h16"
-                  }
-                />
-              </svg>
-            </button>
-          </div>
+          {/* Mobile toggle */}
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="rounded-full p-2 text-navy transition hover:bg-surface md:hidden"
+            aria-label={isOpen ? "Close menu" : "Open menu"}
+            aria-expanded={isOpen}
+          >
+            {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
+
+        {/* Mobile navigation – drops down as a card under the pill */}
+        <div
+          className={`pointer-events-auto mt-2 overflow-hidden rounded-3xl border-line bg-white shadow-[0_20px_40px_-20px_rgba(10,45,74,0.35)] transition-all duration-300 ease-in-out md:hidden ${
+            isOpen ? "max-h-[28rem] border opacity-100" : "pointer-events-none max-h-0 opacity-0"
+          }`}
+        >
+          <nav className="space-y-1 p-3" aria-label="Mobile">
+            {NAV_LINKS.map((l) => (
+              <NavLink key={l.to} to={l.to} end={l.to === "/"} className={mobileNavLinkClasses}>
+                {l.label}
+              </NavLink>
+            ))}
+            <div className="grid grid-cols-2 gap-2 pt-3">
+              <Link to="/join-tutor" className={btn("outline", "md")}>
+                Join as Tutor
+              </Link>
+              <Link to="/book-demo" className={btn("primary", "md")}>
+                Book a demo
+              </Link>
+            </div>
+          </nav>
         </div>
       </div>
-
-      {/* Mobile Navigation */}
-      <div
-        className={`md:hidden bg-white shadow-lg overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-          }`}
-      >
-        <ul className="flex flex-col items-center space-y-4 py-6 px-4">
-          <li>
-            <NavLink to="/" className={mobileNavLinkClasses} onClick={closeMenu}>
-              Home
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/about" className={mobileNavLinkClasses} onClick={closeMenu}>
-              About&nbsp;Us
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/services" className={mobileNavLinkClasses} onClick={closeMenu}>
-              Services
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/contact" className={mobileNavLinkClasses} onClick={closeMenu}>
-              Contact
-            </NavLink>
-          </li>
-          <li>
-            <button
-              onClick={openTutorModal}
-              className="text-xl text-slate-600 hover:text-[#e8b112] font-medium whitespace-nowrap"
-            >
-              Join as Tutor
-            </button>
-          </li>
-          <li className="pt-2">
-            <button
-              onClick={openStudentModal}
-              className="inline-flex items-center justify-center min-w-max px-8 py-3 rounded-full bg-[#e8b112] text-[#0a2d4a] font-semibold hover:bg-[#d4a010] transition touch-manipulation"
-            >
-              Book a demo
-            </button>
-          </li>
-        </ul>
-      </div>
-
-      {/* Modals */}
-      {isStudentModalOpen && (
-        <React.Suspense fallback={null}>
-          <StudentDemoModal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} />
-        </React.Suspense>
-      )}
-      {isTutorModalOpen && (
-        <React.Suspense fallback={null}>
-          <TutorApplicationModal isOpen={isTutorModalOpen} onClose={() => setIsTutorModalOpen(false)} />
-        </React.Suspense>
-      )}
     </header>
   );
 };

@@ -14,11 +14,11 @@
  *   - Sends a notification email to the admin
  *   - Sends an auto-reply confirmation email to the user
  * 
- * Email Service: Resend API (https://resend.com)
+ * Email Service: SMTP through the academy mailbox (nodemailer, see mailer.js)
  * File Upload: Multer (for tutor resume uploads)
  * 
  * Environment Variables Required:
- *   - RESEND_API_KEY: Your Resend API key for sending emails
+ *   - SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS: the mailbox used to send emails
  *   - MAIL_USER: Admin email address (receives all form notifications)
  *   - PORT: Server port (defaults to 5000)
  * ============================================================================
@@ -29,6 +29,7 @@ import multer from "multer";
 import cors from "cors";
 import fs from "fs";
 import dotenv from "dotenv";
+import { sendMail, verifyMail } from "./mailer.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -66,26 +67,7 @@ const ADMIN_EMAIL = process.env.MAIL_USER || 'info@siloraacademy.com';
 const DEFAULT_FROM = `Silora Academy <${ADMIN_EMAIL}>`;
 
 /**
- * Resend API endpoint for sending emails
- */
-const RESEND_API_URL = "https://api.resend.com/emails";
-
-/**
- * Check if Resend API key is configured
- * Warns if missing but doesn't stop the server (for development)
- */
-function ensureResendKey() {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn("⚠️ RESEND_API_KEY is not set. Emails will fail until it's provided.");
-  }
-}
-
-/**
- * Determine MIME type based on file extension
- * Used for email attachments (resumes)
- * 
- * @param {string} filename - Name of the file
- * @returns {string} MIME type string
+ * Determine MIME type based on file extension (email attachments, e.g. resumes)
  */
 function getMimeType(filename) {
   const ext = (filename || "").split('.').pop().toLowerCase();
@@ -99,62 +81,16 @@ function getMimeType(filename) {
 }
 
 /**
- * Send email using Resend API
- * 
- * This function makes a direct HTTP call to Resend's API using fetch.
- * It supports HTML emails and file attachments.
- * 
- * @param {Object} options - Email options
- * @param {string} options.from - Sender email address
- * @param {string} options.to - Recipient email address
- * @param {string} options.subject - Email subject line
- * @param {string} options.html - HTML content of the email
- * @param {string} [options.reply_to] - Reply-to email address (optional)
- * @param {Array} [options.attachments] - Array of attachment objects (optional)
- * @returns {Promise<Object>} Response from Resend API
- * @throws {Error} If API key is missing or API request fails
+ * Send email through the academy's own SMTP mailbox (see mailer.js).
+ * Same options as before: { from, to, subject, html, reply_to, attachments }.
  */
-async function sendResendEmail({ from, to, subject, html, reply_to, attachments }) {
-  ensureResendKey();
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY not set");
-
-  // Build email payload
-  const payload = { from, to, subject, html };
-  if (reply_to) payload.reply_to = reply_to;
-
-  // Add attachments if provided (for tutor resumes)
-  if (attachments && Array.isArray(attachments) && attachments.length) {
-    payload.attachments = attachments.map(a => ({
-      filename: a.filename,
-      content: a.content,  // Base64 encoded file content
-      type: a.type || getMimeType(a.filename)
-    }));
-  }
-
-  // Make HTTP POST request to Resend API
-  const res = await fetch(RESEND_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  // Handle API errors
-  if (!res.ok) {
-    const text = await res.text();
-    const err = new Error(`Resend API error ${res.status}: ${text}`);
-    err.status = res.status;
-    throw err;
-  }
-
-  return res.json();
+async function sendSiteEmail(opts) {
+  const attachments = (opts.attachments || []).map((a) => ({ ...a, type: a.type || getMimeType(a.filename) }));
+  return sendMail({ ...opts, attachments });
 }
 
 // Server startup messages
-console.log("📧 Email sending configured (Resend HTTP API)");
+verifyMail().then((s) => console.log(s === "ok" ? "📧 Email: SMTP connected" : s === "not_configured" ? "📧 Email: SMTP not configured – set SMTP_HOST / SMTP_USER / SMTP_PASS" : `⚠️  Email: SMTP ${s}`));
 console.log("🚀 Server starting...");
 
 // ============================================================================
@@ -249,7 +185,7 @@ app.post("/api/contact", upload.none(), async (req, res) => {
     // Errors are logged but don't affect the user's response
 
     // Send notification to admin
-    sendResendEmail({
+    sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Contact Form Submission from ${user_name}`,
@@ -258,7 +194,7 @@ app.post("/api/contact", upload.none(), async (req, res) => {
     }).catch(err => console.error("Admin email error:", err));
 
     // Send confirmation to user
-    sendResendEmail({
+    sendSiteEmail({
       from: DEFAULT_FROM,
       to: user_email,
       subject: `We've Received Your Message - Silora Academy`,
@@ -357,7 +293,7 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
     // Send emails asynchronously (fire-and-forget pattern)
 
     // Send notification to admin
-    sendResendEmail({
+    sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Student Demo Booking - ${name}`,
@@ -366,7 +302,7 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
     }).catch(err => console.error("Student demo email error:", err));
 
     // Send confirmation to user
-    sendResendEmail({
+    sendSiteEmail({
       from: DEFAULT_FROM,
       to: email,
       subject: `Your Demo Session Request Is Confirmed - Silora Academy`,
@@ -418,17 +354,17 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
     // ========================================================================
     // PREPARE FILE ATTACHMENT (if resume was uploaded)
     // ========================================================================
-    let attachmentsForResend = [];
+    let attachmentsForEmail = [];
     if (file) {
       try {
         // Read the uploaded file from temporary storage
         const fileBuffer = fs.readFileSync(file.path);
 
-        // Convert to base64 (required by Resend API)
+        // Convert to base64 for the email attachment
         const base64 = fileBuffer.toString('base64');
 
         // Add to attachments array
-        attachmentsForResend.push({
+        attachmentsForEmail.push({
           filename: file.originalname,
           content: base64,
           type: getMimeType(file.originalname)
@@ -512,13 +448,13 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
     // Send emails asynchronously (fire-and-forget pattern)
 
     // Send notification to admin with resume attachment
-    sendResendEmail({
+    sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Tutor Application - ${tutor_name}`,
       html: adminHtml,
       reply_to: tutor_email,  // Admin can reply directly to applicant
-      attachments: attachmentsForResend
+      attachments: attachmentsForEmail
     }).catch(err => console.error("Admin tutor email error:", err))
       .finally(() => {
         // Clean up: Delete temporary uploaded file after email is sent
@@ -532,7 +468,7 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
       });
 
     // Send confirmation to applicant (no attachment needed)
-    sendResendEmail({
+    sendSiteEmail({
       from: DEFAULT_FROM,
       to: tutor_email,
       subject: `Application Received - Silora Academy Teaching Opportunity`,
@@ -559,5 +495,9 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
 // START SERVER
 // ============================================================================
 
+// Learning portal (admin / teacher / student) – loaded after dotenv so its config sees .env
+const { mountPortal } = await import("./portal/index.js");
+mountPortal(app);
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

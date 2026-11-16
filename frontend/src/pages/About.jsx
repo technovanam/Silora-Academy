@@ -1,415 +1,327 @@
-import React, { useState } from "react";
-import { Building2, BadgeCheck, CircleStar, User, Users, BookOpen, Clock, Target, MessageCircle, UserCheck } from "lucide-react";
-const StudentDemoModal = React.lazy(() => import("../components/StudentDemoModal"));
+import React from "react";
+import { Link } from "react-router-dom";
+import { Check, User, Users, BookOpen, Clock, Target, MessageCircle, UserCheck, Compass, Eye } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { Section, SplitHeading, Eyebrow } from "../components/ui/Section";
+import LightHero from "../components/ui/LightHero";
+import Reveal from "../components/ui/Reveal";
+import CTASection from "../components/ui/CTASection";
+import { btn, cardClass } from "../components/ui/styles";
+
+// Hero mosaic – photos of different heights, each with an optional stat card
+const unsplash = (id) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=700&q=75`;
+const MOSAIC = [
+  { src: unsplash("1509062522246-3755977927d7"), alt: "Student learning with a tutor", h: "h-56 sm:h-72", stat: { value: "1K+", label: "Students guided" } },
+  { src: unsplash("1522202176988-66273c2fd55f"), alt: "Students studying together", h: "h-72 sm:h-96", stat: { value: "90%", label: "Improved confidence" } },
+  { src: unsplash("1503676260728-1c00da094a0b"), alt: "Learning materials on a desk", h: "h-60 sm:h-80", stat: { value: "12+", label: "Boards covered" } },
+  { src: unsplash("1427504494785-3a9ca7044f45"), alt: "Students in a classroom", h: "h-52 sm:h-64", stat: { value: "4", label: "Faculty leads" } },
+];
+
+// ============================================================
+// CONTENT
+// ============================================================
+
+const MISSION_VISION = [
+  {
+    Icon: Compass,
+    title: "Our Mission",
+    text: "Silora Academy is founded on the belief that every learner deserves personal attention, clear guidance, and a learning pace that fits them. Our mission is to make quality education both accessible and enjoyable for all.",
+    points: [
+      "Empower students to reach their full potential.",
+      "Blend traditional teaching with modern tools.",
+      "Provide consistent mentorship and flexibility.",
+    ],
+  },
+  {
+    Icon: Eye,
+    title: "Our Vision",
+    text: "We envision a world where education adapts to each learner — not the other way around. Silora Academy strives to build a safe, inspiring space that nurtures curiosity and lifelong learning.",
+    points: [
+      "Build confidence through personalized support.",
+      "Create an environment for growth and independence.",
+      "Inspire a lifelong love for learning.",
+    ],
+  },
+];
+
+const WHAT_WE_DO = [
+  {
+    Icon: User,
+    title: "One-on-One Tutoring",
+    text: "Focused attention with customized lessons tailored to each student's pace and goals. Tutors build on strengths, close learning gaps, and boost confidence with steady guidance.",
+  },
+  {
+    Icon: Users,
+    title: "Group Sessions",
+    text: "Learn and grow together. Our interactive group classes encourage teamwork, discussion, and healthy competition while motivating students to learn from one another.",
+  },
+  {
+    Icon: BookOpen,
+    title: "All Boards Covered",
+    text: "From CBSE and ICSE to IB, Cambridge, and State Boards — we cover it all. Each lesson is aligned with your curriculum to ensure solid understanding and exam readiness.",
+  },
+  {
+    Icon: Clock,
+    title: "Flexible Scheduling",
+    text: "Morning, evening, or weekend — choose what fits best. Our flexible timings help students balance academics with their routine while keeping learning consistent and stress-free.",
+  },
+];
+
+const APPROACH = [
+  {
+    Icon: Target,
+    title: "Personalized Learning Paths",
+    text: "Lessons designed to match each student's pace, style, and academic goals.",
+  },
+  {
+    Icon: MessageCircle,
+    title: "Interactive Sessions",
+    text: "Engaging live classes and discussions that make learning active, fun, and meaningful.",
+  },
+  {
+    Icon: UserCheck,
+    title: "Mentorship Programs",
+    text: "Ongoing one-on-one support from experienced educators who guide, motivate, and inspire progress.",
+  },
+];
+
+// imgClass keeps each photo framed on the face (the source photos are cropped differently)
+const TEAM = [
+  {
+    name: "Sameeha",
+    role: "Founder & CEO · Biology & Physics Educator",
+    bio: "Enthusiastic about breaking down intricate Biology and Physics topics, empowering learners to thrive academically.",
+    img: "https://res.cloudinary.com/dnmvriw3e/image/upload/v1764746980/01-removebg-preview_2_lqhbjc.jpg",
+    imgClass: "",
+  },
+  {
+    name: "Haseeba",
+    role: "Head of Mathematics Faculty",
+    bio: "Passionate mathematician who transforms abstract formulas into clear insights, inspiring confidence in every pupil.",
+    img: null,
+    imgClass: "",
+  },
+  {
+    name: "Joshnitha",
+    role: "Head of Computer Science Faculty",
+    bio: "Innovative coder who unravels intricate algorithms, igniting curiosity and empowering future technologists.",
+    img: null,
+    imgClass: "",
+  },
+  {
+    name: "Aneesa Firdous",
+    role: "Head of SST Faculty",
+    bio: "Visionary historian weaving cultural narratives through immersive explorations, sparking critical thinking and lifelong appreciation.",
+    img: "https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_400/v1764439337/WhatsApp_Image_2025-11-29_at_09.58.43_e4cd9578_axbas2.jpg",
+    imgClass: "",
+  },
+];
+
+// ============================================================
+// PAGE
+// ============================================================
 
 const About = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
   return (
-    <div className="bg-white text-slate-800 font-sans">
-      {/* ============================================================ */}
-      {/* HERO SECTION */}
-      {/* ============================================================ */}
-
-      <section className="flex items-center justify-center text-center py-6 px-4 sm:px-6 bg-white">
-        <div className="relative bg-gradient-to-br from-[#0a2d4a]/5 to-white rounded-2xl sm:rounded-3xl shadow-lg max-w-9xl w-full text-center py-16 sm:py-20 md:py-35 px-4 sm:px-6 md:px-24">
-          <div className="inline-flex items-center gap-2 bg-white text-[#0a2d4a] font-semibold px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-sm border border-[#e8b112] mb-4 sm:mb-6">
-            <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#e8b112]" />
-            <span className="text-xs sm:text-sm md:text-md tracking-wide uppercase">
-              About Us
-            </span>
-          </div>
-
-          <h1 className="text-2xl sm:text-3xl md:text-6xl max-w-7xl text-center justify-center font-bold text-slate-900 leading-tight mb-4 sm:mb-6">
-            Empowering Students Through <br />
-            <span className="italic text-[#e8b112]">Personalized Learning</span>
-          </h1>
-
-          <p className="text-sm sm:text-base md:text-lg text-slate-600 max-w-2xl mx-auto">
-            At Silora Academy, we make learning inspiring, flexible, and supportive so every student can grow with confidence.
-          </p>
+    <div className="bg-white">
+      {/* ===================== HERO (photo mosaic) ===================== */}
+      <LightHero
+        eyebrow="About us"
+        title="Empowering students through"
+        highlight="personalized learning"
+        subtitle="At Silora Academy, we make learning inspiring, flexible, and supportive so every student can grow with confidence."
+        actions={
+          <>
+            <Link to="/book-demo" className={btn("primary", "lg", "w-full sm:w-auto")}>
+              Book a free demo <ArrowRight className="h-4 w-4" />
+            </Link>
+            <a href="#team" className={btn("outline", "lg", "w-full sm:w-auto")}>
+              Meet our team
+            </a>
+          </>
+        }
+      >
+        <div className="mx-auto grid max-w-6xl grid-cols-2 items-end gap-3 sm:gap-4 md:grid-cols-4">
+          {MOSAIC.map((m, i) => (
+            <div key={m.src} className={`relative overflow-hidden rounded-[1.75rem] bg-slate-100 ring-1 ring-line ${m.h} ${i > 1 ? "hidden md:block" : ""}`}>
+              <img src={m.src} alt={m.alt} className="h-full w-full object-cover" loading={i < 2 ? "eager" : "lazy"} />
+              {m.stat && (
+                <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-white/95 px-4 py-3 text-left shadow-lg backdrop-blur">
+                  <div className="text-xl font-bold text-navy sm:text-2xl">{m.stat.value}</div>
+                  <p className="text-xs text-muted">{m.stat.label}</p>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-      </section>
+      </LightHero>
 
-      {/* ============================================================ */}
-      {/* STORY, MISSION & VISION SECTION */}
-      {/* ============================================================ */}
-
-      <section className="py-8 sm:py-12 md:py-16 px-4 sm:px-6 md:px-12 lg:px-16 xl:px-24">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-start max-w-7xl mx-auto">
-          {/* LEFT COLUMN */}
-          <div>
-            <button className="inline-flex items-center gap-2 text-xs sm:text-sm uppercase tracking-wide text-[#0a2d4a] font-semibold mb-3 sm:mb-4 bg-[#e8b112]/10 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-[#e8b112] hover:bg-[#e8b112]/20 transition-colors duration-200">
-              <CircleStar className="w-3 h-3 sm:w-4 sm:h-4 text-[#e8b112]" />
-              Our Story
-            </button>
-
-            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 mb-4 sm:mb-6 leading-tight">
-              Shaping the Future of Personalized Learning
-            </h2>
-
-            <p className="text-base sm:text-lg md:text-xl text-slate-600 mb-6 sm:mb-8 leading-relaxed">
-              At Silora Academy, we believe education should be personal, flexible, and inspiring. Guided by a passion for meaningful learning, we've built a calm, supportive environment where every student can grow with confidence.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 sm:mt-10">
-              {/* Stat 1 */}
-              <div className="flex-1 bg-white border-2 border-[#e8b112]/30 rounded-xl sm:rounded-2xl shadow-md p-4 sm:p-6 text-left hover:shadow-lg hover:border-[#e8b112] transition-all duration-300">
-                <h3 className="text-3xl sm:text-4xl font-bold text-[#e8b112]">1K+</h3>
-                <p className="text-slate-600 text-xs sm:text-sm mt-2">
-                  Students guided toward success.
-                </p>
-              </div>
-
-              {/* Stat 2 */}
-              <div className="flex-1 bg-white border-2 border-[#e8b112]/30 rounded-xl sm:rounded-2xl shadow-md p-4 sm:p-6 text-left hover:shadow-lg hover:border-[#e8b112] transition-all duration-300">
-                <h3 className="text-3xl sm:text-4xl font-bold text-[#e8b112]">90%</h3>
-                <p className="text-slate-600 text-xs sm:text-sm mt-2">
-                  Improved confidence and understanding.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN */}
-          <div className="space-y-8 sm:space-y-12 lg:pl-10 relative mt-8 lg:mt-0">
-            {/* Vertical line - hidden on mobile/tablet, visible on desktop (xl+) */}
-            <div className="hidden xl:block absolute left-0 top-[14px] h-[285px] w-[2px] bg-gray-200"></div>
-
-            {/* MISSION */}
-            <div className="relative">
-              {/* Dot - hidden on mobile/tablet, visible on desktop (xl+) */}
-              <div className="hidden xl:block absolute -left-[45px] top-[14px] w-3 h-3 bg-[#e8b112] rounded-full"></div>
-              <div className="hidden lg:block absolute -left-[45px] top-[14px] w-3 h-3 bg-[#e8b112] rounded-full"></div>
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2 sm:mb-3 flex items-center gap-3">
-                Our Mission
-              </h3>
-              <p className="text-sm sm:text-base text-slate-600 mb-3 sm:mb-4">
-                Silora Academy is founded on the belief that every learner deserves personal attention, clear guidance, and a learning pace that fits them. Our mission is to make quality education both accessible and enjoyable for all.
-              </p>
-              <ul className="space-y-2 text-sm sm:text-base text-slate-700">
-                <li className="flex items-start gap-2">
-                  <BadgeCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Empower students to reach their full potential.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <BadgeCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Blend traditional teaching with modern tools.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <BadgeCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Provide consistent mentorship and flexibility.</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* VISION */}
-            <div className="relative">
-              {/* Dot - hidden on mobile, visible on lg+ */}
-              <div className="hidden lg:block absolute -left-[45px] top-[11px] w-3 h-3 bg-[#e8b112] rounded-full"></div>
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2 sm:mb-3 flex items-center gap-3">
-                Our Vision
-              </h3>
-              <p className="text-sm sm:text-base text-slate-600 mb-3 sm:mb-4">
-                We envision a world where education adapts to each learner — not the other way around. Silora Academy strives to build a safe, inspiring space that nurtures curiosity and lifelong learning.
-              </p>
-              <ul className="space-y-2 text-sm sm:text-base text-slate-700">
-                <li className="flex items-start gap-2">
-                  <BadgeCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Build confidence through personalized support.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <BadgeCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Create an environment for growth and independence.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <BadgeCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Inspire a lifelong love for learning.</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/* WHAT WE DO SECTION */}
-      {/* ============================================================ */}
-
-      <section className="py-8 sm:py-12 md:py-16 px-4 sm:px-6 bg-white">
-        <div className="max-w-7xl mx-auto">
-          {/* Outer box */}
-          <div className="bg-slate-200 rounded-2xl sm:rounded-3xl shadow-lg p-6 sm:p-8 md:p-10 lg:p-12">
-            <div className="text-center mb-8 sm:mb-12">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-3 sm:mb-4">
-                What We Do
+      {/* ===================== STORY + MISSION / VISION ===================== */}
+      <Section>
+        <div className="grid gap-4 lg:grid-cols-12">
+          {/* Story */}
+          <Reveal className="flex flex-col justify-between rounded-[2rem] bg-navy p-6 sm:p-10 lg:col-span-5 lg:row-span-2">
+            <div>
+              <Eyebrow tone="dark">Our story</Eyebrow>
+              <h2 className="mt-5 text-3xl font-bold leading-[1.1] !text-white sm:text-4xl">
+                Shaping the future of personalized learning
               </h2>
-              <p className="text-sm sm:text-base md:text-lg text-slate-600 max-w-3xl mx-auto px-4">
-                We go beyond traditional tutoring — creating personalized learning experiences that adapt to every student's style, goals, and schedule.
+              <p className="mt-5 text-base leading-relaxed text-slate-300 sm:text-lg">
+                At Silora Academy, we believe education should be personal, flexible, and inspiring. Guided by a
+                passion for meaningful learning, we've built a calm, supportive environment where every student can
+                grow with confidence.
               </p>
             </div>
-
-            {/* Four cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 md:gap-8">
-              {/* Card 1 */}
-              <div className="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 md:p-8 shadow hover:shadow-xl hover:scale-105 transition-all duration-300">
-                <div className="bg-[#e8b112]/20 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mb-3 sm:mb-4">
-                  <User className="w-5 h-5 sm:w-6 sm:h-6 text-[#0a2d4a]" />
-                </div>
-                <h3 className="text-lg sm:text-xl md:text-2xl font-semibold text-slate-900 mb-2">
-                  One-on-One Tutoring
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600">
-                  Focused attention with customized lessons tailored to each student's pace and goals. Tutors build on strengths, close learning gaps, and boost confidence with steady guidance.
-                </p>
+            <div className="mt-10 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+                <div className="text-4xl font-bold text-brand">1K+</div>
+                <p className="mt-1 text-sm text-slate-300">Students guided toward success</p>
               </div>
-
-              {/* Card 2 */}
-              <div className="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 md:p-8 shadow hover:shadow-xl hover:scale-105 transition-all duration-300">
-                <div className="bg-[#e8b112]/20 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mb-3 sm:mb-4">
-                  <Users className="w-5 h-5 sm:w-6 sm:h-6 text-[#0a2d4a]" />
-                </div>
-                <h3 className="text-lg sm:text-xl md:text-2xl font-semibold text-slate-900 mb-2">
-                  Group Sessions
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600">
-                  Learn and grow together. Our interactive group classes encourage teamwork, discussion, and healthy competition while motivating students to learn from one another.
-                </p>
-              </div>
-
-              {/* Card 3 */}
-              <div className="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 md:p-8 shadow hover:shadow-xl hover:scale-105 transition-all duration-300">
-                <div className="bg-[#e8b112]/20 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mb-3 sm:mb-4">
-                  <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-[#0a2d4a]" />
-                </div>
-                <h3 className="text-lg sm:text-xl md:text-2xl font-semibold text-slate-900 mb-2">
-                  All Boards Covered
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600">
-                  From CBSE and ICSE to IB, Cambridge, and State Boards — we cover it all. Each lesson is aligned with your curriculum to ensure solid understanding and exam readiness.
-                </p>
-              </div>
-
-              {/* Card 4 */}
-              <div className="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 md:p-8 shadow hover:shadow-xl hover:scale-105 transition-all duration-300">
-                <div className="bg-[#e8b112]/20 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mb-3 sm:mb-4">
-                  <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-[#0a2d4a]" />
-                </div>
-                <h3 className="text-lg sm:text-xl md:text-2xl font-semibold text-slate-900 mb-2">
-                  Flexible Scheduling
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600">
-                  Morning, evening, or weekend — choose what fits best. Our flexible timings help students balance academics with their routine while keeping learning consistent and stress-free.
-                </p>
+              <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+                <div className="text-4xl font-bold text-brand">90%</div>
+                <p className="mt-1 text-sm text-slate-300">Improved confidence and understanding</p>
               </div>
             </div>
-          </div>
+          </Reveal>
+
+          {/* Mission & Vision */}
+          {MISSION_VISION.map(({ Icon, title, text, points }, i) => (
+            <Reveal key={title} delay={(i + 1) * 100} className={`${cardClass} p-6 sm:p-8 lg:col-span-7`}>
+              <div className="grid gap-6 sm:grid-cols-5">
+                <div className="sm:col-span-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-soft">
+                      <Icon className="h-5 w-5 text-brand-hover" />
+                    </span>
+                    <h3 className="text-2xl font-semibold">{title}</h3>
+                  </div>
+                  <p className="mt-4 text-[15px] leading-relaxed text-muted">{text}</p>
+                </div>
+                <ul className="space-y-3 sm:col-span-2 sm:border-l sm:border-line sm:pl-6">
+                  {points.map((p) => (
+                    <li key={p} className="flex items-start gap-2.5 text-[15px] text-slate-700">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-soft">
+                        <Check className="h-3 w-3 text-brand-hover" strokeWidth={3} />
+                      </span>
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Reveal>
+          ))}
         </div>
-      </section>
+      </Section>
 
-      {/* ============================================================ */}
-      {/* OUR APPROACH SECTION */}
-      {/* ============================================================ */}
-
-      <section className="py-12 sm:py-16 md:py-20 lg:py-24 px-4 sm:px-6 md:px-12 lg:px-16 xl:px-24 bg-white">
-        <div className="max-w-6xl mx-auto text-center mb-8 sm:mb-12 md:mb-16">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900">
-            Our Approach
-          </h2>
+      {/* ===================== WHAT WE DO ===================== */}
+      <Section tone="surface">
+        <SplitHeading
+          eyebrow="What we do"
+          title="Learning that adapts to every student"
+          subtitle="We go beyond traditional tutoring — creating personalized learning experiences that adapt to every student's style, goals, and schedule."
+        />
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:mt-16 lg:grid-cols-4">
+          {WHAT_WE_DO.map(({ Icon, title, text }, i) => (
+            <Reveal key={title} delay={i * 80} className={`${cardClass} group flex flex-col p-6 sm:p-7`}>
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft transition-colors group-hover:bg-brand">
+                <Icon className="h-6 w-6 text-brand-hover transition-colors group-hover:text-navy" />
+              </span>
+              <h3 className="mt-8 text-xl font-semibold">{title}</h3>
+              <p className="mt-2 text-[15px] leading-relaxed text-slate-500">{text}</p>
+            </Reveal>
+          ))}
         </div>
+      </Section>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center max-w-6xl mx-auto">
-          {/* LEFT SIDE - IMAGE */}
-          <div className="flex justify-center order-2 md:order-1">
+      {/* ===================== APPROACH ===================== */}
+      <Section>
+        <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-16">
+          <Reveal className="relative lg:col-span-6">
             <img
-              src="https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_450/v1761212328/approachImage_ova89m.jpg"
-              alt="Student Learning"
-              className="rounded-xl sm:rounded-2xl shadow-lg w-full max-w-md object-cover"
+              src="https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_900/v1761212328/approachImage_ova89m.jpg"
+              alt="Student learning online"
+              className="aspect-[4/3] w-full rounded-[2rem] object-cover"
               loading="lazy"
-              width="448"
-              height="300"
+              width="900"
+              height="675"
             />
-          </div>
-
-          {/* RIGHT SIDE - CONTENT */}
-          <div className="text-left order-1 md:order-2">
-            <h3 className="text-xl sm:text-2xl font-bold text-[#e8b112] mb-3 sm:mb-4">
-              Empowering Minds Through Personalized and Interactive Learning
-            </h3>
-            <p className="text-sm sm:text-base text-slate-600 mb-4 sm:mb-6">
-              Every student learns differently. Our approach focuses on understanding each learner's strengths and creating a path that builds confidence and lasting success.
+            <div className="absolute -bottom-5 left-5 right-5 flex items-center gap-3 rounded-2xl border border-line bg-white/95 p-4 shadow-lg backdrop-blur sm:left-auto sm:right-6 sm:w-72">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-navy">
+                <Target className="h-5 w-5 text-brand" />
+              </span>
+              <p className="text-sm font-semibold text-navy">Every student learns differently</p>
+            </div>
+          </Reveal>
+          <Reveal delay={120} className="lg:col-span-6">
+            <Eyebrow>Our approach</Eyebrow>
+            <h2 className="mt-5 text-3xl font-bold leading-[1.1] sm:text-4xl lg:text-5xl">
+              Empowering minds through personalized, interactive learning
+            </h2>
+            <p className="mt-5 text-base leading-relaxed text-muted sm:text-lg">
+              Our approach focuses on understanding each learner's strengths and creating a path that builds confidence
+              and lasting success.
             </p>
-
-            {/* List with dividing lines */}
-            <div className="divide-y divide-gray-300">
-              <div className="flex items-start gap-2 sm:gap-3 py-3 sm:py-4">
-                <div className="bg-[#e8b112]/20 p-1.5 sm:p-2 rounded-full flex-shrink-0">
-                  <Target className="h-4 w-4 sm:h-5 sm:w-5 text-[#0a2d4a]" />
+            <div className="mt-8 divide-y divide-line border-y border-line">
+              {APPROACH.map(({ Icon, title, text }) => (
+                <div key={title} className="flex gap-4 py-5">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-surface ring-1 ring-line">
+                    <Icon className="h-5 w-5 text-navy" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold">{title}</h3>
+                    <p className="mt-1 text-[15px] leading-relaxed text-slate-500">{text}</p>
+                  </div>
                 </div>
-                <p className="text-sm sm:text-base text-slate-700">
-                  <span className="font-semibold text-slate-900">
-                    Personalized Learning Paths:
-                  </span>{" "}
-                  Lessons designed to match each student's pace, style, and academic goals.
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </Section>
+
+      {/* ===================== TEAM ===================== */}
+      <Section id="team" tone="surface" className="scroll-mt-16">
+        <SplitHeading
+          eyebrow="Our team"
+          title="Meet the people behind Silora"
+          subtitle="Our dedicated team of educators and professionals is committed to providing the best learning experience for every student."
+        />
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:mt-16 lg:grid-cols-4">
+          {TEAM.map((m, i) => (
+            <Reveal key={m.name} delay={i * 80} className="group relative overflow-hidden rounded-[2rem] bg-slate-200">
+              <div className="aspect-[3/4] overflow-hidden">
+                <div className="h-full w-full transition-transform duration-700 group-hover:scale-105">
+                  {m.img ? (
+                    <img
+                      src={m.img}
+                      alt={m.name}
+                      className={`h-full w-full object-cover object-top ${m.imgClass}`}
+                      loading="lazy"
+                    />
+                  ) : (
+                    // No photo: show initials on a brand background
+                    <div className="flex h-full w-full items-start justify-center bg-gradient-to-br from-brand-soft via-white to-slate-200 pt-[22%]">
+                      <span className="flex h-28 w-28 items-center justify-center rounded-full bg-navy text-4xl font-bold text-brand shadow-lg ring-8 ring-white/70">
+                        {m.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy via-navy/85 to-transparent p-5 pt-16">
+                <h3 className="text-xl font-semibold !text-white">{m.name}</h3>
+                <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-brand">{m.role}</p>
+                <p className="mt-2 overflow-hidden text-sm leading-relaxed text-slate-200 transition-all duration-500 lg:max-h-0 lg:opacity-0 lg:group-hover:max-h-40 lg:group-hover:opacity-100">
+                  {m.bio}
                 </p>
               </div>
-
-              <div className="flex items-start gap-2 sm:gap-3 py-3 sm:py-4">
-                <div className="bg-[#e8b112]/20 p-1.5 sm:p-2 rounded-full flex-shrink-0">
-                  <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5 text-[#0a2d4a]" />
-                </div>
-                <p className="text-sm sm:text-base text-slate-700">
-                  <span className="font-semibold text-slate-900">
-                    Interactive Sessions:
-                  </span>{" "}
-                  Engaging live classes and discussions that make learning active, fun, and meaningful.
-                </p>
-              </div>
-
-              <div className="flex items-start gap-2 sm:gap-3 py-3 sm:py-4">
-                <div className="bg-[#e8b112]/20 p-1.5 sm:p-2 rounded-full flex-shrink-0">
-                  <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-[#0a2d4a]" />
-                </div>
-                <p className="text-sm sm:text-base text-slate-700">
-                  <span className="font-semibold text-slate-900">
-                    Mentorship Programs:
-                  </span>{" "}
-                  Ongoing one-on-one support from experienced educators who guide, motivate, and inspire progress.
-                </p>
-              </div>
-            </div>
-          </div>
+            </Reveal>
+          ))}
         </div>
-      </section>
+      </Section>
 
-      {/* ============================================================ */}
-      {/* MEET OUR TEAM SECTION */}
-      {/* ============================================================ */}
-
-      <section className="py-12 sm:py-16 md:py-20 lg:py-24 px-4 sm:px-6 bg-slate-50">
-        <div className="max-w-7xl mx-auto text-center mb-12">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-            Meet Our Team
-          </h2>
-          <p className="text-sm sm:text-base md:text-lg text-slate-600 max-w-2xl mx-auto">
-            Our dedicated team of educators and professionals is committed to providing the best learning experience for every student.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-8 max-w-7xl mx-auto">
-          {/* Team Member 1 */}
-          <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 group w-[85%] sm:w-80">
-            <div className="relative overflow-hidden">
-              <img
-                src="https://res.cloudinary.com/dnmvriw3e/image/upload/v1764746980/01-removebg-preview_2_lqhbjc.jpg"
-                alt="Sameeha"
-                className="w-full h-60 sm:h-80 object-cover object-top group-hover:scale-110 transition-transform duration-500"
-                loading="lazy"
-              />
-            </div>
-            <div className="p-6 text-center">
-              <h3 className="text-xl font-bold text-slate-900 mb-1">Sameeha</h3>
-              <p className="text-[#e8b112] font-semibold text-sm uppercase tracking-wide mb-3">Founder & CEO <br /> Biology & Physics Educator</p>
-              <p className="text-slate-600 text-sm">
-                Enthusiastic about breaking down intricate Biology and Physics topics, empowering learners to thrive academically.
-              </p>
-            </div>
-          </div>
-
-          {/* Team Member 2 */}
-          <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 group w-[85%] sm:w-80">
-            <div className="relative overflow-hidden">
-              <img
-                src="https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_400/v1764686774/WhatsApp_Image_2025-11-29_at_11.09.18_6dd17289_1_hxxpd7.jpg"
-                alt="Haseeba"
-                className="w-full h-60 sm:h-80 object-cover object-top scale-110 -translate-y-0 group-hover:scale-125 transition-transform duration-500"
-                loading="lazy"
-              />
-            </div>
-            <div className="p-6 text-center">
-              <h3 className="text-xl font-bold text-slate-900 mb-1">Haseeba</h3>
-              <p className="text-[#e8b112] font-semibold text-sm uppercase tracking-wide mb-3">Head of Mathematics Faculty</p>
-              <p className="text-slate-600 text-sm">
-                Passionate mathematician who transforms abstract formulas into clear insights, inspiring confidence in every pupil.
-              </p>
-            </div>
-          </div>
-
-          {/* Team Member 3 */}
-          <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 group w-[85%] sm:w-80">
-            <div className="relative overflow-hidden">
-              <img
-                src="https://res.cloudinary.com/dnmvriw3e/image/upload/v1764751308/WhatsApp_Image_2025-12-02_at_20.56.14_076b88ff_1_kj7eok.jpg"
-                alt="Joshnitha"
-                className="w-full h-60 sm:h-80 object-cover object-top scale-130 -translate-y-0 group-hover:scale-145 transition-transform duration-500"
-                loading="lazy"
-              />
-            </div>
-            <div className="p-6 text-center">
-              <h3 className="text-xl font-bold text-slate-900 mb-1">Joshnitha</h3>
-              <p className="text-[#e8b112] font-semibold text-sm uppercase tracking-wide mb-3">Head of Computer Science Faculty</p>
-              <p className="text-slate-600 text-sm">
-                Innovative coder who unravels intricate algorithms, igniting curiosity and empowering future technologists.
-              </p>
-            </div>
-          </div>
-
-          {/* Team Member 4 */}
-          <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 group w-[85%] sm:w-80">
-            <div className="relative overflow-hidden">
-              <img
-                src="https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_400/v1764439337/WhatsApp_Image_2025-11-29_at_09.58.43_e4cd9578_axbas2.jpg"
-                alt="Aneesa Firdous"
-                className="w-full h-60 sm:h-80 object-cover object-top group-hover:scale-110 transition-transform duration-500"
-                loading="lazy"
-              />
-            </div>
-            <div className="p-6 text-center">
-              <h3 className="text-xl font-bold text-slate-900 mb-1">Aneesa Firdous</h3>
-              <p className="text-[#e8b112] font-semibold text-sm uppercase tracking-wide mb-3">Head of SST Faculty</p>
-              <p className="text-slate-600 text-sm">
-                Visionary historian weaving cultural narratives through immersive explorations, sparking critical thinking and lifelong appreciation.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/* CALL TO ACTION SECTION */}
-      {/* ============================================================ */}
-
-      <section className="py-12 sm:py-16 md:py-20 lg:py-28 text-center bg-gradient-to-br from-[#0a2d4a] via-[#0d3a5c] to-[#0a2d4a] text-white rounded-t-[2rem] sm:rounded-t-[3rem] md:rounded-t-[4rem] lg:rounded-t-[7rem] relative overflow-hidden">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#e8b112] rounded-full filter blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#e8b112] rounded-full filter blur-3xl animate-pulse delay-1000"></div>
-        </div>
-
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold mb-3 sm:mb-4 md:mb-6 px-2">
-            Ready to Discover Your Potential?
-          </h2>
-          <p className="text-sm sm:text-base md:text-lg lg:text-xl mb-6 sm:mb-8 opacity-90 px-4">
-            Join Silora Academy today and take the first step toward confident,
-            <br className="hidden sm:block" />
-            personalized, and flexible learning.
-          </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-[#e8b112] text-[#0a2d4a] font-bold py-2 sm:py-2.5 md:py-3 px-5 sm:px-6 md:px-8 rounded-lg sm:rounded-xl md:rounded-full hover:bg-[#d4a010] transition-all duration-300 shadow-md text-sm sm:text-base md:text-lg lg:text-xl"
-          >
-            Book a Free Demo
-          </button>
-        </div>
-      </section>
-
-      {/* Book Demo Modal */}
-      {isModalOpen && (
-        <React.Suspense fallback={null}>
-          <StudentDemoModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-        </React.Suspense>
-      )}
+      <div className="pt-16 sm:pt-20 lg:pt-28">
+        <CTASection />
+      </div>
     </div>
   );
 };

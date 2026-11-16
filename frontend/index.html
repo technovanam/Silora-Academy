@@ -39,22 +39,12 @@
   <meta name="twitter:image"
     content="https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_1200/v1761212329/Home_top_r0v709.png" />
 
-  <!-- Montserrat from Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Mazzard font (self-hosted in public/Mazzard Font) -->
+  <link rel="preload" href="/Mazzard%20Font/MazzardH-Regular.otf" as="font" type="font/otf" crossorigin>
+  <link rel="preload" href="/Mazzard%20Font/MazzardH-Bold.otf" as="font" type="font/otf" crossorigin>
+  <!-- Hero photos load eagerly with fetchpriority="high" in the page itself; no global preload
+       (a preload here fires on every route, including /portal, and triggers "preloaded but not used") -->
   <link rel="preconnect" href="https://images.unsplash.com">
-  <link rel="preconnect" href="https://randomuser.me">
-  <link rel="preload" as="image"
-    href="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1920&q=80" imagesrcset="
-      https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=640&q=80 640w,
-      https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=768&q=80 768w,
-      https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1024&q=80 1024w,
-      https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1280&q=80 1280w,
-      https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1536&q=80 1536w,
-      https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1920&q=80 1920w"
-    imagesizes="100vw" />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap"
-    rel="stylesheet">
 
   <!-- JSON-LD Structured Data - Organization -->
   <script type="application/ld+json">

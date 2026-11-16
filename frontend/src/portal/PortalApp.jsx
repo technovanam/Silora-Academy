@@ -1,0 +1,162 @@
+// ============================================================
+// PORTAL ROUTES – /portal/*
+// ============================================================
+import React, { Suspense, lazy, useEffect } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { AuthProvider, useAuth, can } from "./lib/auth.jsx";
+import { UiProvider, Loading, Empty } from "./ui/index.jsx";
+import { Link2Off, ShieldOff } from "lucide-react";
+import { api } from "./lib/api.js";
+import PortalLayout from "./PortalLayout.jsx";
+import { LoginPage, ForgotPasswordPage, ResetPasswordPage, homeFor } from "./pages/AuthPages.jsx";
+import { NotificationsPage, AnnouncementsPage, ProfilePage } from "./pages/SharedPages.jsx";
+import { StudentDashboard, StudentClasses, StudentMaterials, StudentAttendance, StudentProgress } from "./pages/StudentPages.jsx";
+import { TeacherDashboard, TeacherCalendar, TeacherStudents, TeacherStudentDetail, TeacherMaterials, TeacherRequests } from "./pages/TeacherPages.jsx";
+import { AdminDashboard, AdminAlerts } from "./pages/admin/AdminDashboard.jsx";
+import { AdminUsersPage, AdminUserDetail, AdminAdminsPage } from "./pages/admin/AdminUsers.jsx";
+import { AdminClasses, AdminRequests } from "./pages/admin/AdminClasses.jsx";
+import { AdminMaterials, AdminAttendance, AdminRecordings } from "./pages/admin/AdminContent.jsx";
+import { AdminAnnouncements, AdminNotifications } from "./pages/admin/AdminComms.jsx";
+import { AdminReports, AdminSettings, AdminBackups } from "./pages/admin/AdminSystem.jsx";
+import { MessagesPage, AdminMessagesPage } from "./pages/MessagesPage.jsx";
+
+// The live classroom pulls in LiveKit, so it loads only when someone joins a class
+const ClassRoom = lazy(() => import("./pages/ClassRoom.jsx"));
+
+function RequireAuth({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <Loading className="min-h-svh" label="Loading your portal…" />;
+  if (!user) return <Navigate to="/portal/login" replace state={{ from: location.pathname + location.search }} />;
+  return children;
+}
+
+function Role({ role, perm, superOnly, children }) {
+  const { user } = useAuth();
+  if (user.role !== role) return <Navigate to={homeFor(user)} replace />;
+  if ((perm && !can(user, perm)) || (superOnly && !user.superAdmin))
+    return <Empty icon={ShieldOff} title="You don't have access to this page" text="Ask a super admin to give your account this permission." />;
+  return children;
+}
+
+// Shared class link (/portal/join/abc-defg-hij) → the class's join screen
+function JoinByLink() {
+  const { code } = useParams();
+  const navigate = useNavigate();
+  const [error, setError] = React.useState(null);
+  useEffect(() => {
+    api
+      .get(`/meetings/code/${encodeURIComponent(code)}`)
+      .then((r) => navigate(`/portal/class/${r.id}?code=${encodeURIComponent(r.code)}`, { replace: true }))
+      .catch(setError);
+  }, [code, navigate]);
+  if (error) return <Empty icon={Link2Off} className="min-h-svh" title="Can't open this class link" text={error.message} action={<a href="/portal" className="font-semibold text-navy underline">Go to the portal</a>} />;
+  return <Loading className="min-h-svh" label="Opening class…" />;
+}
+
+function Home() {
+  const { user } = useAuth();
+  return <Navigate to={homeFor(user)} replace />;
+}
+
+function Title() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    document.title = "Portal · Silora Academy";
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
+const A = (perm, el, superOnly) => (
+  <Role role="admin" perm={perm} superOnly={superOnly}>
+    {el}
+  </Role>
+);
+function MessagesRoute() {
+  const { user } = useAuth();
+  if (user.role === "admin") return <Navigate to="/portal/admin/messages" replace />;
+  return <MessagesPage />;
+}
+const T = (el) => <Role role="teacher">{el}</Role>;
+const S = (el) => <Role role="student">{el}</Role>;
+
+export default function PortalApp() {
+  return (
+    <AuthProvider>
+      <UiProvider>
+        <Title />
+        <Routes>
+          <Route path="login" element={<LoginPage />} />
+          <Route path="forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="reset-password" element={<ResetPasswordPage />} />
+          <Route
+            path="join/:code"
+            element={
+              <RequireAuth>
+                <JoinByLink />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="class/:id"
+            element={
+              <RequireAuth>
+                <Suspense fallback={<div className="flex h-svh items-center justify-center bg-[#0b1724]"><Loading label="Opening classroom…" /></div>}>
+                  <ClassRoom />
+                </Suspense>
+              </RequireAuth>
+            }
+          />
+          <Route
+            element={
+              <RequireAuth>
+                <PortalLayout />
+              </RequireAuth>
+            }
+          >
+            <Route index element={<Home />} />
+            <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="announcements" element={<AnnouncementsPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="messages" element={<MessagesRoute />} />
+
+            <Route path="student" element={S(<StudentDashboard />)} />
+            <Route path="student/classes" element={S(<StudentClasses />)} />
+            <Route path="student/materials" element={S(<StudentMaterials />)} />
+            <Route path="student/attendance" element={S(<StudentAttendance />)} />
+            <Route path="student/progress" element={S(<StudentProgress />)} />
+
+            <Route path="teacher" element={T(<TeacherDashboard />)} />
+            <Route path="teacher/calendar" element={T(<TeacherCalendar />)} />
+            <Route path="teacher/classes" element={<Navigate to="/portal/teacher/calendar" replace />} />
+            <Route path="teacher/students" element={T(<TeacherStudents />)} />
+            <Route path="teacher/students/:id" element={T(<TeacherStudentDetail />)} />
+            <Route path="teacher/materials" element={T(<TeacherMaterials />)} />
+            <Route path="teacher/requests" element={T(<TeacherRequests />)} />
+
+            <Route path="admin" element={A(null, <AdminDashboard />)} />
+            <Route path="admin/students" element={A("users", <AdminUsersPage key="s" role="student" />)} />
+            <Route path="admin/teachers" element={A("users", <AdminUsersPage key="t" role="teacher" />)} />
+            <Route path="admin/admins" element={A(null, <AdminAdminsPage />, true)} />
+            <Route path="admin/users/:id" element={A("users", <AdminUserDetail />)} />
+            <Route path="admin/classes" element={A("classes", <AdminClasses />)} />
+            <Route path="admin/requests" element={A("classes", <AdminRequests />)} />
+            <Route path="admin/schedule-requests" element={<Navigate to="/portal/admin/requests" replace />} />
+            <Route path="admin/materials" element={A("materials", <AdminMaterials />)} />
+            <Route path="admin/attendance" element={A("attendance", <AdminAttendance />)} />
+            <Route path="admin/recordings" element={A("recordings", <AdminRecordings />)} />
+            <Route path="admin/messages" element={A("messages", <AdminMessagesPage />)} />
+            <Route path="admin/announcements" element={A("announcements", <AdminAnnouncements />)} />
+            <Route path="admin/notifications" element={A("notifications", <AdminNotifications />)} />
+            <Route path="admin/alerts" element={A(null, <AdminAlerts />)} />
+            <Route path="admin/reports" element={A("reports", <AdminReports />)} />
+            <Route path="admin/settings" element={A("settings", <AdminSettings />)} />
+            <Route path="admin/backups" element={A("backups", <AdminBackups />)} />
+            <Route path="*" element={<Empty title="Page not found" text="Use the menu to find what you're looking for." />} />
+          </Route>
+        </Routes>
+      </UiProvider>
+    </AuthProvider>
+  );
+}

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import App from './App.jsx';
 import Home from './pages/Home.jsx';
@@ -11,6 +11,9 @@ import { MAINTENANCE_MODE, MAINTENANCE_PREVIEW_SECRET } from './config.js';
 const About = React.lazy(() => import('./pages/About.jsx'));
 const Services = React.lazy(() => import('./pages/Services.jsx'));
 const Contact = React.lazy(() => import('./pages/Contact.jsx'));
+const BookDemo = React.lazy(() => import('./pages/BookDemo.jsx'));
+const JoinTutor = React.lazy(() => import('./pages/JoinTutor.jsx'));
+const PortalApp = React.lazy(() => import('./portal/PortalApp.jsx'));
 import './index.css';
 
 // ============================================================
@@ -35,10 +38,19 @@ function AppRoutes() {
         <Route path="about" element={<About />} />
         <Route path="services" element={<Services />} />
         <Route path="contact" element={<Contact />} />
-        {/* Redirect old book-demo page to home */}
-        <Route path="book-demo" element={<Navigate to="/" replace />} />
+        <Route path="book-demo" element={<BookDemo />} />
+        <Route path="join-tutor" element={<JoinTutor />} />
         {/* You can add a 404 Not Found page here later */}
       </Route>
+      {/* Learning portal (admin / teacher / student) */}
+      <Route
+        path="/portal/*"
+        element={
+          <React.Suspense fallback={<div className="min-h-svh bg-surface" />}>
+            <PortalApp />
+          </React.Suspense>
+        }
+      />
     </Routes>
   );
 }

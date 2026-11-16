@@ -1,40 +1,262 @@
 @import "tailwindcss";
 
 /* ============================================================ */
-/* GLOBAL STYLES */
+/* MAZZARD FONT (served from public/Mazzard Font) */
 /* ============================================================ */
 
-* {
-  font-family: "Montserrat", Arial, sans-serif;
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-Thin.otf") format("opentype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-ThinItalic.otf") format("opentype");
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-ExtraLight.otf") format("opentype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-ExtraLightItalic.otf") format("opentype");
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-LightItalic.otf") format("opentype");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-Italic.otf") format("opentype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-MediumItalic.otf") format("opentype");
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-SemiBold.otf") format("opentype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-SemiBoldItalic.otf") format("opentype");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-BoldItalic.otf") format("opentype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-ExtraBold.otf") format("opentype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-ExtraBoldItalic.otf") format("opentype");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-Black.otf") format("opentype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mazzard";
+  src: url("/Mazzard%20Font/MazzardH-BlackItalic.otf") format("opentype");
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ============================================================ */
+/* DESIGN TOKENS                                                 */
+/* Brand: navy for text & dark surfaces, gold for actions/accents */
+/* ============================================================ */
+@theme {
+  --font-sans: "Mazzard", ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand: #e8b112;        /* gold – primary buttons, highlights */
+  --color-brand-hover: #d4a010;
+  --color-brand-soft: #fdf6e3;   /* very light gold tint for icon chips */
+  --color-navy: #0a2d4a;         /* headings, dark sections */
+  --color-navy-light: #0d3a5c;
+  --color-ink: #0f172a;
+  --color-muted: #475569;        /* body copy */
+  --color-line: #e2e8f0;         /* borders */
+  --color-surface: #f8fafc;      /* alternate section background */
+}
+
+/* ============================================================ */
+/* GLOBAL STYLES                                                 */
+/* ============================================================ */
+
+html, body, button, input, select, textarea {
+  font-family: var(--font-sans);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  line-height: 1.45;
+  line-height: 1.55;
 }
 
 body {
   background-color: #ffffff;
-  color: #0f172a;
+  color: var(--color-ink);
 }
 
-h1, h2, h3, h4, h5, h6 {
-  letter-spacing: -0.01em;
-  margin-top: 0;
-  margin-bottom: 0.5rem;
+/* In the base layer so text-* utilities on headings win (the portal relies on this) */
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
+    color: var(--color-navy);
+  }
 }
 
-.ui-compact {
-  line-height: 1.2;
+::selection {
+  background: var(--color-brand);
+  color: var(--color-navy);
+}
+
+/* Default keyboard focus ring. Lives in the base layer so components that
+   draw their own ring (inputs, buttons) can switch it off with `outline-none`
+   instead of showing two outlines at once. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+}
+
+/* Minimal scrollbars everywhere: thin, no track, rounded thumb that darkens on hover.
+   Chromium/Safari use the ::-webkit-scrollbar pseudo-elements (setting scrollbar-color
+   would switch those off), Firefox gets the standard thin scrollbar. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.45);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139 / 0.7);
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.55) transparent;
+  }
+}
+
+/* Slimmer still inside dropdowns, panels and lists */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  border-width: 2px;
 }
 
 button, .btn, input[type="button"], input[type="submit"] {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-  text-rendering: optimizeLegibility;
+  cursor: pointer;
 }
 
 .scrollbar-hide {
@@ -45,11 +267,184 @@ button, .btn, input[type="button"], input[type="submit"] {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
 @keyframes fadeIn {
-  0% { opacity: 0; transform: translateY(20px); }
+  0% { opacity: 0; transform: translateY(12px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes modalIn {
+  0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .animate-fadeIn {
-  animation: fadeIn 0.4s ease forwards;
+  animation: fadeIn 0.5s ease forwards;
+}
+
+.animate-modalIn {
+  animation: modalIn 0.2s ease-out forwards;
+}
+
+/* Slow zoom on hero photos */
+@keyframes kenburns {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+.animate-kenburns {
+  animation: kenburns 20s ease-out forwards;
+}
+
+/* Infinite horizontal scroller (boards strip, testimonials) */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee var(--marquee-duration, 40s) linear infinite;
+}
+.marquee-reverse {
+  animation-direction: reverse;
+}
+.marquee-pause:hover .marquee {
+  animation-play-state: paused;
+}
+.marquee-fade {
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee { animation: none !important; }
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Phone input (react-phone-input-2) – match the site's form fields */
+.react-tel-input .form-control {
+  width: 100% !important;
+  height: 46px !important;
+  padding-left: 52px !important;
+  font-size: 15px !important;
+  color: var(--color-ink) !important;
+  background: #fff !important;
+  border: 1px solid var(--color-line) !important;
+  border-radius: 0.75rem !important;
+  transition: border-color .15s, box-shadow .15s;
+}
+.react-tel-input .form-control:focus {
+  border-color: var(--color-brand) !important;
+  box-shadow: 0 0 0 3px rgb(232 177 18 / 0.2) !important;
+  outline: none;
+}
+.react-tel-input .flag-dropdown {
+  background: transparent !important;
+  border: none !important;
+  border-right: 1px solid var(--color-line) !important;
+  border-radius: 0.75rem 0 0 0.75rem !important;
+}
+.react-tel-input .selected-flag {
+  width: 44px !important;
+  padding-left: 12px !important;
+  border-radius: 0.75rem 0 0 0.75rem !important;
+}
+/* Floating-label variant used in the popup forms */
+.phone-float .react-tel-input .form-control {
+  height: 48px !important;
+  padding: 18px 16px 4px 60px !important;
+  background: rgb(241 245 249 / 0.8) !important;
+  border: 1px solid transparent !important;
+  border-radius: 0.75rem !important;
+}
+.phone-float .react-tel-input .form-control:hover {
+  background: rgb(241 245 249) !important;
+}
+.phone-float .react-tel-input .form-control:focus {
+  background: #fff !important;
+  border-color: var(--color-brand) !important;
+}
+.phone-float .react-tel-input .flag-dropdown {
+  border-right: none !important;
+  border-radius: 0.75rem 0 0 0.75rem !important;
+}
+.phone-float .react-tel-input .selected-flag {
+  width: 52px !important;
+  padding-left: 16px !important;
+  padding-top: 10px !important;
+  border-radius: 0.75rem 0 0 0.75rem !important;
+  background: transparent !important;
+}
+.phone-float .react-tel-input .selected-flag:hover,
+.phone-float .react-tel-input .selected-flag:focus,
+.phone-float .react-tel-input .flag-dropdown.open,
+.phone-float .react-tel-input .flag-dropdown.open .selected-flag {
+  background: transparent !important;
+}
+
+/* Phone country dropdown – same look as the custom country picker */
+.react-tel-input .country-list {
+  width: min(320px, calc(100vw - 48px)) !important;
+  max-height: 300px !important;
+  margin-top: 8px !important;
+  padding: 0 8px 8px !important;
+  background: #fff !important;
+  border: 1px solid var(--color-line) !important;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.react-tel-input .country-list .search {
+  padding: 8px 0 6px !important;
+  background: #fff !important;
+}
+.react-tel-input .country-list .search-emoji {
+  display: none !important;
+}
+.react-tel-input .country-list .search-box {
+  width: 100% !important;
+  height: 40px !important;
+  margin: 0 !important;
+  padding: 0 12px !important;
+  font-size: 14px !important;
+  background: #f1f5f9 !important;
+  border: none !important;
+  border-radius: 0.5rem !important;
+  outline: none !important;
+}
+.react-tel-input .country-list .country {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px !important;
+  font-size: 14px !important;
+  color: #334155;
+  border-radius: 0.5rem !important;
+}
+.react-tel-input .country-list .country:hover,
+.react-tel-input .country-list .country.highlight {
+  background: var(--color-surface) !important;
+}
+.react-tel-input .country-list .country.highlight {
+  font-weight: 600;
+  color: var(--color-navy);
+}
+.react-tel-input .country-list .country .flag {
+  margin-top: 0 !important;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.08);
+}
+.react-tel-input .country-list .country .dial-code {
+  margin-left: auto;
+  color: #94a3b8 !important;
+}
+.react-tel-input .country-list .divider {
+  margin: 4px 0 !important;
+  border-bottom-color: var(--color-line) !important;
+}
+.react-tel-input .country-list {
+  border-radius: 0.75rem !important;
+  box-shadow: 0 10px 30px -10px rgb(15 23 42 / 0.25) !important;
 }

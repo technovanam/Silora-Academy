@@ -1,0 +1,24 @@
+# Production LiveKit config – replace the domain, key and secret.
+port: 7880
+bind_addresses: ["127.0.0.1"]   # Caddy/Nginx terminates TLS in front (wss://live.siloraacademy.com)
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+redis:
+  address: 127.0.0.1:6379
+keys:
+  silora: CHANGE-ME-long-random-secret
+room:
+  empty_timeout: 300
+  max_participants: 12
+webhook:
+  api_key: silora
+  urls:
+    - https://api.siloraacademy.com/api/portal/livekit/webhook
+turn:
+  enabled: true
+  domain: turn.siloraacademy.com
+  tls_port: 5349
+  udp_port: 3478

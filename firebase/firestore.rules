@@ -1,0 +1,11 @@
+rules_version = '2';
+// All portal data is read and written ONLY through the Node API (firebase-admin),
+// which enforces the role/permission rules from the requirements.
+// Browsers can never read or write Firestore directly.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

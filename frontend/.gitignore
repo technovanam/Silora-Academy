@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Logs
 logs
 *.log
@@ -11,8 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+uploads/
 *.local
 .env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -24,9 +25,3 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
-=======
-node_modules/
-uploads/
-.env
-*.log
->>>>>>> backend/main

@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { Building2 } from "lucide-react";
-import { PlayCircleIcon } from "@heroicons/react/24/outline";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
-const StudentDemoModal = React.lazy(() => import("../components/StudentDemoModal"));
-import { useLocation } from "react-router-dom";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { Container } from "../components/ui/Section";
+import LightHero from "../components/ui/LightHero";
+import CTASection from "../components/ui/CTASection";
+import { btn, cardClass } from "../components/ui/styles";
+
 
 // ============================================================
 // SERVICES DATA
@@ -195,162 +197,110 @@ const categories = [
 ];
 
 // ============================================================
-// CATEGORY INTRODUCTIONS
+// SERVICE CARD
 // ============================================================
 
-const categoryIntro = {
-  "Tutoring Formats":
-    "Our tutoring formats are designed for flexibility and personal attention. Choose a mode that fits your pace and goals.",
-  "Specialized Learning Services":
-    "Programs focused on skill-building, curriculum alignment, and targeted support for every learner.",
-  "Virtual Classroom Tools":
-    "Our virtual tools create an engaging and interactive online learning environment.",
-  "Tutor & Scheduling Features":
-    "Easily find, book, and manage your tutoring sessions with full transparency and flexibility.",
-  "Additional Services":
-    "Beyond tutoring, we provide ongoing academic support and guidance for students and parents.",
-};
-
-// ============================================================
-// SERVICE CARD COMPONENT
-// ============================================================
-
-const ServiceCard = ({ service }) => (
-  <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300 text-left">
-    <div className="w-full h-40 sm:h-48 md:h-52 lg:h-56 overflow-hidden bg-gray-100">
+const ServiceCard = ({ service, index }) => (
+  <article className={`${cardClass} group flex flex-col overflow-hidden p-2`}>
+    <div className="relative aspect-[4/3] overflow-hidden rounded-[1.5rem] bg-slate-100">
       <img
-        className={`w-full h-full object-cover ${service.id === 401 ? 'object-[50%_20%]' : ''}`}
+        className={`h-full w-full object-cover transition-transform duration-700 group-hover:scale-105 ${service.id === 401 ? "object-[50%_20%]" : ""}`}
         src={service.image}
         alt={service.title}
         loading="lazy"
         decoding="async"
       />
+      <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-navy backdrop-blur">
+        {String(index + 1).padStart(2, "0")}
+      </span>
     </div>
-    <div className="p-4 sm:p-5 md:p-6">
-      <h3 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900">
-        {service.title}
-      </h3>
-      <p className="text-slate-600 mt-2 sm:mt-3 text-sm sm:text-base md:text-base leading-relaxed">{service.description}</p>
+    <div className="flex flex-1 flex-col px-4 pb-4 pt-5">
+      <h3 className="text-lg font-semibold">{service.title}</h3>
+      <p className="mt-2 flex-1 text-[15px] leading-relaxed text-slate-500">{service.description}</p>
+      <Link
+        to="/book-demo"
+        className="mt-5 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-navy transition-colors hover:text-brand-hover"
+      >
+        Book a free demo
+        <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+      </Link>
     </div>
-  </div>
+  </article>
 );
+
 // ============================================================
-// MAIN SERVICES COMPONENT
+// PAGE
 // ============================================================
 
 const ServicesPage = () => {
-  const [activeCategory, setActiveCategory] = useState("Tutoring Formats");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const location = useLocation();
+  const [activeCategory, setActiveCategory] = useState(categories[0]);
 
-  const filteredServices = servicesData.filter(
-    (service) => service.category === activeCategory
-  );
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [location.pathname]);
+  const filteredServices = servicesData.filter((service) => service.category === activeCategory);
 
   return (
-    <div className="bg-white text-slate-800 font-sans">
+    <div className="bg-white">
+      {/* ===================== HERO (centered + category chips) ===================== */}
+      <LightHero
+        eyebrow="Our services"
+        title="Designed for"
+        highlight="confident learning"
+        subtitle="Discover flexible, personalized tutoring options built to fit every student's pace, goals, and board of education."
+        actions={
+          <Link to="/book-demo" className={btn("primary", "lg", "w-full sm:w-auto")}>
+            Book a free demo <ArrowRight className="h-4 w-4" />
+          </Link>
+        }
+      >
+        <p className="text-sm font-medium text-slate-500">Choose a category</p>
+        <div role="tablist" aria-label="Service categories" className="mx-auto mt-4 flex max-w-5xl flex-wrap justify-center gap-2">
+          {categories.map((category) => {
+            const active = activeCategory === category;
+            const count = servicesData.filter((s) => s.category === category).length;
+            return (
+              <button
+                key={category}
+                role="tab"
+                aria-selected={active}
+                aria-controls="services"
+                onClick={() => setActiveCategory(category)}
+                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                  active ? "border-navy bg-navy text-white shadow-md" : "border-line bg-white text-slate-600 hover:border-slate-300 hover:text-navy"
+                }`}
+              >
+                {category}
+                <span className={`rounded-full px-1.5 text-[11px] font-semibold ${active ? "bg-brand text-navy" : "bg-surface text-slate-400"}`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </LightHero>
 
-      {/* ============================================================ */}
-      {/* HERO SECTION */}
-      {/* ============================================================ */}
-
-      <section className="flex items-center justify-center text-center py-6 px-4 sm:px-6 bg-white">
-        <div className="relative bg-gradient-to-br from-[#0a2d4a]/5 to-white rounded-2xl sm:rounded-3xl shadow-lg max-w-9xl w-full text-center py-16 sm:py-20 md:py-35 px-4 sm:px-6 md:px-24">
-
-          <div className="inline-flex items-center gap-2 bg-white text-[#0a2d4a] font-semibold px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-sm border border-[#e8b112] mb-4 sm:mb-6">
-            <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#e8b112]" />
-            <span className="text-xs sm:text-sm md:text-md tracking-wide uppercase">
-              Our Services
-            </span>
+      <section id="services" className="scroll-mt-24 pb-14 pt-2 sm:pb-16 lg:pb-24">
+        <Container>
+          <div className="flex flex-col gap-6">
+            <div>
+              <p className="text-sm font-medium text-slate-400">
+                {categories.indexOf(activeCategory) + 1} / {categories.length}
+              </p>
+              <h2 className="mt-1 text-3xl font-bold sm:text-4xl">{activeCategory}</h2>
+            </div>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl md:text-6xl max-w-7xl text-center justify-center font-bold text-slate-900 leading-tight mb-4 sm:mb-6">
-            Designed for <br />
-            <span className="italic text-[#e8b112]">Confident Learning</span>
-          </h1>
-
-          <p className="text-sm sm:text-base md:text-lg text-slate-600 max-w-2xl mx-auto">
-            Discover flexible, personalized tutoring options built to fit every
-            student's pace, goals, and board of education.
-          </p>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/* CATEGORY TABS */}
-      {/* ============================================================ */}
-
-      <div className="flex justify-center mt-12 mb-12">
-        <div className="flex flex-wrap gap-x-6 sm:gap-x-8 md:gap-x-10 gap-y-2 border-b border-gray-200 pl-6 pr-4">
-          {categories.map((category) => (
-            <button
-              key={category}
-              onClick={() => setActiveCategory(category)}
-              className={`py-3 px-1 text-[18px] font-medium rounded-t-lg transition-all duration-300 ease-in-out whitespace-nowrap -mb-px 
-                ${activeCategory === category
-                  ? "text-[#e8b112] border-b-3 border-[#e8b112]"
-                  : "text-slate-600 hover:text-[#e8b112] border-b-2 border-transparent"
-                }`}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ============================================================ */}
-      {/* SERVICES GRID SECTION */}
-      {/* ============================================================ */}
-
-      <section className="mb-20 text-center px-6 sm:px-12 lg:px-24">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mt-10">
-          {filteredServices.map((service) => (
-            <ServiceCard key={service.id} service={service} />
-          ))}
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/* CALL TO ACTION SECTION */}
-      {/* ============================================================ */}
-
-
-      <section className="py-12 sm:py-16 md:py-20 lg:py-28 text-center bg-gradient-to-br from-[#0a2d4a] via-[#0d3a5c] to-[#0a2d4a] text-white rounded-t-[2rem] sm:rounded-t-[3rem] md:rounded-t-[4rem] lg:rounded-t-[7rem] relative overflow-hidden">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#e8b112] rounded-full filter blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#e8b112] rounded-full filter blur-3xl animate-pulse delay-1000"></div>
-        </div>
-
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold mb-3 sm:mb-4 md:mb-6 px-2">
-            Ready to Discover Your Potential?
-          </h2>
-          <p className="text-sm sm:text-base md:text-lg lg:text-xl mb-6 sm:mb-8 opacity-90 px-4">
-            Join Silora Academy today and take the first step toward confident,
-            <br className="hidden sm:block" />
-            personalized, and flexible learning.
-          </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-[#e8b112] text-[#0a2d4a] font-bold py-2 sm:py-2.5 md:py-3 px-5 sm:px-6 md:px-8 rounded-lg sm:rounded-xl md:rounded-full hover:bg-[#d4a010] transition-all duration-300 shadow-md text-sm sm:text-base md:text-lg lg:text-xl"
+          {/* Grid – fills the full width whether a category has 3 or 4 services */}
+          <div
+            key={activeCategory}
+            className={`animate-fadeIn mt-10 grid gap-4 sm:grid-cols-2 ${
+              filteredServices.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4"
+            }`}
           >
-            Book a Free Demo
-          </button>
-        </div>
+            {filteredServices.map((service, i) => (
+              <ServiceCard key={service.id} service={service} index={i} />
+            ))}
+          </div>
+        </Container>
       </section>
 
-
-      {/* Book Demo Modal */}
-      {isModalOpen && (
-        <React.Suspense fallback={null}>
-          <StudentDemoModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-        </React.Suspense>
-      )}
+      <CTASection />
     </div>
   );
 };
