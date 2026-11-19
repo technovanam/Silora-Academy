@@ -15,10 +15,15 @@ export class ApiError extends Error {
   }
 }
 
+let lastToken = null; // kept for requests sent while the page closes
+
 async function headers(extra = {}) {
   const h = { ...extra };
   const user = auth.currentUser;
-  if (user) h.Authorization = `Bearer ${await user.getIdToken()}`;
+  if (user) {
+    lastToken = await user.getIdToken();
+    h.Authorization = `Bearer ${lastToken}`;
+  }
   return h;
 }
 
@@ -57,6 +62,15 @@ export const api = {
   put: (path, body = {}) => request("PUT", path, body),
   patch: (path, body = {}) => request("PATCH", path, body),
   del: (path) => request("DELETE", path),
+
+  /** Fire-and-forget POST that still goes out while the tab is closing. */
+  beacon: (path, body = {}) => {
+    try {
+      fetch(PORTAL_API + path, { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", ...(lastToken ? { Authorization: `Bearer ${lastToken}` } : {}) }, body: JSON.stringify(body) });
+    } catch {
+      /* the page is going away anyway */
+    }
+  },
 
   /** Multipart upload with progress (XHR so we can show a progress bar). */
   upload: async (path, formData, onProgress) => {

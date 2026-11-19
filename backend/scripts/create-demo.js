@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import config from "../portal/config.js";
 import { auth, db, C } from "../portal/firebase.js";
 
-const ALL_PERMS = { users: true, contacts: true, classes: true, materials: true, attendance: true, recordings: true, announcements: true, reports: true, notifications: true, backups: true, settings: true };
+const ALL_PERMS = { users: true, contacts: true, classes: true, materials: true, attendance: true, announcements: true, reports: true, notifications: true, backups: true, settings: true };
 
 const PEOPLE = [
   { key: "admin", role: "admin", name: "Demo Admin", email: "demo.admin@silora.test", superAdmin: false, permissions: ALL_PERMS },

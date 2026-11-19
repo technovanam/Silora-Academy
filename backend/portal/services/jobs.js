@@ -2,7 +2,8 @@
 // SCHEDULED JOBS (node-cron, in the academy timezone)
 //  • every minute  – class reminders, scheduled materials & announcements
 //  • every 5 min   – retry failed notification deliveries
-//  • hourly        – delete recordings and message files past their retention period
+//  • hourly        – delete message files past their retention period, close
+//                    live classes left open long after their end time
 //  • daily 02:00   – backup + data-retention clean-up
 //  • daily 09:00   – inactivity alert summary to admins
 //  • Sat 10:00 / Sun 18:00 – weekly attendance reminders to students
@@ -17,8 +18,8 @@ import { createBackup } from "./backup.js";
 import { computeAlerts } from "./alerts.js";
 import { publishMaterial } from "../routes/materials.js";
 import { deliverAnnouncement } from "../routes/notifications.js";
-import { cleanupRecordings } from "../routes/recordings.js";
 import { cleanupMessageFiles } from "../routes/messages.js";
+import { closeForgottenRooms } from "../routes/live.js";
 import { purgeUser } from "../routes/adminUsers.js";
 
 const fmtTime = (iso) => new Intl.DateTimeFormat("en-IN", { timeZone: config.timezone, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
@@ -127,14 +128,33 @@ export async function sendAttendanceReminders() {
   return ids.length;
 }
 
-// The same jobs, by name, for Cloud Scheduler (functions entry in scripts/build-api.mjs)
+// Hour / minute / weekday in the academy timezone
+function localParts(d = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: config.timezone, hour: "2-digit", minute: "2-digit", weekday: "short", hourCycle: "h23" }).formatToParts(d).map((x) => [x.type, x.value]));
+  return { hour: Number(p.hour), minute: Number(p.minute), weekday: p.weekday };
+}
+
+const hourlyCleanup = async () => {
+  await cleanupMessageFiles();
+  await closeForgottenRooms();
+};
+
+// For Cloud Scheduler (functions in scripts/build-api.mjs). Only two scheduler jobs, so
+// the project stays inside the free 3 jobs: "minute" runs every minute, "hourly" every
+// hour on the hour and picks the daily / weekly work by the local time.
 export const JOBS = {
-  minute: async () => { await sendClassReminders(); await publishScheduled(); },
-  retry: retryFailed,
-  hourly: async () => { await cleanupRecordings(); await cleanupMessageFiles(); },
-  nightly: async () => { await createBackup("Automatic daily backup"); await retentionCleanup(); },
-  alerts: sendInactivityAlerts,
-  attendance: sendAttendanceReminders,
+  minute: async () => {
+    const { minute } = localParts();
+    await guarded("minute", async () => { await sendClassReminders(); await publishScheduled(); })();
+    if (minute % 5 === 0) await guarded("retry", retryFailed)();
+  },
+  hourly: async () => {
+    const { hour, weekday } = localParts();
+    await guarded("hourly", hourlyCleanup)();
+    if (hour === 2) await guarded("nightly", async () => { await createBackup("Automatic daily backup"); await retentionCleanup(); })();
+    if (hour === 9) await guarded("alerts", sendInactivityAlerts)();
+    if ((weekday === "Sat" && hour === 10) || (weekday === "Sun" && hour === 18)) await guarded("attendance", sendAttendanceReminders)();
+  },
 };
 
 export function startJobs() {
@@ -145,8 +165,8 @@ export function startJobs() {
   const tz = { timezone: config.timezone };
   cron.schedule("* * * * *", guarded("minute", async () => { await sendClassReminders(); await publishScheduled(); }), tz);
   cron.schedule("*/5 * * * *", guarded("retry", retryFailed), tz);
-  cron.schedule("17 * * * *", guarded("recordings", cleanupRecordings), tz);
   cron.schedule("23 * * * *", guarded("message-files", cleanupMessageFiles), tz);
+  cron.schedule("*/10 * * * *", guarded("live-rooms", closeForgottenRooms), tz);
   cron.schedule("0 2 * * *", guarded("nightly", async () => { await createBackup("Automatic daily backup"); await retentionCleanup(); }), tz);
   cron.schedule("0 9 * * *", guarded("alerts", sendInactivityAlerts), tz);
   cron.schedule("0 10 * * 6", guarded("attendance-sat", sendAttendanceReminders), tz);

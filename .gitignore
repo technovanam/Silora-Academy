@@ -2,9 +2,6 @@ firebase/emulator-data/
 *-debug.log
 node_modules/
 .env
-livekit/bin/
-livekit/recordings/*
-!livekit/recordings/.gitkeep
 
 # Firebase service-account keys (never commit)
 service-account*.json
@@ -13,10 +10,6 @@ service-account*.json
 
 # Demo account passwords (backend/scripts/create-demo.js)
 *.local.txt
-
-# Whisper speech-to-text models (downloaded, large)
-whisper/models/*
-!whisper/models/.gitkeep
 
 # Business documents (not code)
 *.pdf

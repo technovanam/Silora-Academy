@@ -45,7 +45,6 @@ export const ADMIN_PERMISSIONS = {
   classes: "Manage classes and schedule change requests",
   materials: "Manage all learning materials",
   attendance: "View and correct attendance forms",
-  recordings: "View and play class recordings",
   messages: "Read teacher–student messages",
   announcements: "Create and publish announcements",
   reports: "Activity logs, reports and exports",
@@ -77,7 +76,7 @@ export async function logActivity(req, action, { targetType, targetId, summary, 
   }
 }
 
-// Sensitive administrative actions (account changes, recordings, restores…)
+// Sensitive administrative actions (account changes, restores…)
 export async function audit(req, action, { targetType, targetId, summary, meta } = {}) {
   const a = req?.user;
   try {

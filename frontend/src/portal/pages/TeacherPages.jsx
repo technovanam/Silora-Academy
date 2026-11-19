@@ -11,7 +11,7 @@ import {
   Avatar, Badge, Button, Card, CardTitle, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, PageHeader, Progress, SearchInput,
   Segmented, Select, StatCard, Textarea, cx, useAsync, useUi,
 } from "../ui/index.jsx";
-import { ClassDetailDialog, ClassFormDialog, ClassRow, CopyLinkButton, JoinButton, RequestDialog, WeekCalendar, mondayOf, useNow } from "../components/classes.jsx";
+import { ClassDetailDialog, ClassFormDialog, ClassRow, JoinButton, RequestDialog, WeekCalendar, mondayOf, useNow } from "../components/classes.jsx";
 import { MaterialsManager } from "../components/materials.jsx";
 
 // ---- Dashboard -----------------------------------------------------------------------
@@ -113,7 +113,6 @@ export function TeacherCalendar() {
     return (
       <>
         <JoinButton m={m} size="sm" />
-        <CopyLinkButton m={m} />
         {future && (
           <Menu
             trigger={<IconButton icon={MoreHorizontal} label="More" />}

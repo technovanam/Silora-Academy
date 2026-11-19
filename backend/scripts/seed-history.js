@@ -63,7 +63,6 @@ for (const t of teachers) {
         endAt: new Date(start.getTime() + dur * 60000).toISOString(),
         durationMin: dur,
         status: Math.random() < 0.08 ? "cancelled" : "scheduled",
-        roomName: `${config.livekit.roomPrefix}-hist${Math.random().toString(16).slice(2, 14)}`,
         notes: "",
         seriesId: null,
         createdBy: t.id,

@@ -24,7 +24,6 @@ const TYPE_LABELS = {
   message: "New message",
   material_uploaded: "Material uploaded by a teacher",
   class_scheduled_admin: "Class scheduled by a teacher",
-  recording_ready: "Recording ready",
   account: "Account",
 };
 

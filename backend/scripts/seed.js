@@ -23,7 +23,7 @@ if (!config.useEmulators && !process.argv.includes("--force")) {
   process.exit(1);
 }
 
-const ALL_PERMS = { users: true, contacts: true, classes: true, materials: true, attendance: true, recordings: true, announcements: true, reports: true, notifications: true, backups: true, settings: true };
+const ALL_PERMS = { users: true, contacts: true, classes: true, materials: true, attendance: true, announcements: true, reports: true, notifications: true, backups: true, settings: true };
 
 const PEOPLE = [
   { key: "admin", role: "admin", name: "Sasi (Super Admin)", email: "admin@silora.test", password: "Admin@2026", superAdmin: true, permissions: ALL_PERMS, phone: "+91 90000 00001" },
@@ -114,7 +114,6 @@ async function seedData(ids) {
       startAt,
       endAt: addMinutes(startAt, m.durationMin).toISOString(),
       status: "scheduled",
-      roomName: `${config.livekit.roomPrefix}-demo${i}${Math.random().toString(16).slice(2, 12)}`,
       notes: "",
       seriesId: null,
       createdBy: ids.admin,

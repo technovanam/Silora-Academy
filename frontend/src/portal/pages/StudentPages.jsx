@@ -5,7 +5,7 @@ import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { fmtDate, fmtDateTime, fmtDay, fmtSize, fmtTime, fmtWeek, fromNow } from "../lib/format.js";
 import { Badge, Button, Card, CardTitle, Empty, ErrorBox, Field, Loading, Notice, PageHeader, Progress, SearchInput, Segmented, Select, StatCard, Textarea, Input, cx, useAsync, useUi } from "../ui/index.jsx";
-import { ClassRow, JoinButton, joinState, useNow } from "../components/classes.jsx";
+import { ClassRow, JoinButton, classState, useNow } from "../components/classes.jsx";
 import { FileIcon, PreviewDialog, getMaterialLink } from "../components/materials.jsx";
 
 const greeting = () => {
@@ -21,7 +21,7 @@ export function StudentDashboard() {
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   const next = data.nextClass;
-  const js = next && joinState(next);
+  const js = next && classState(next);
   return (
     <>
       <PageHeader title={`${greeting()}, ${user.name.split(" ")[0]}`} subtitle={data.teacherName ? `Your teacher: ${data.teacherName}` : "Your teacher will be assigned soon."} />
@@ -161,7 +161,7 @@ export function StudentClasses() {
   const list = useMemo(() => {
     const all = data?.meetings || [];
     const now = new Date().toISOString();
-    if (tab === "upcoming") return all.filter((m) => m.status === "scheduled" && joinState(m) !== "ended");
+    if (tab === "upcoming") return all.filter((m) => m.status === "scheduled" && classState(m) !== "ended");
     if (tab === "past") return all.filter((m) => m.status !== "cancelled" && (m.endAt < now || m.status === "completed")).reverse();
     return all.filter((m) => m.status === "cancelled").reverse();
   }, [data, tab]);

@@ -1,11 +1,61 @@
 rules_version = '2';
 // All portal data is read and written ONLY through the Node API (firebase-admin),
 // which enforces the role/permission rules from the requirements.
-// Browsers can never read or write Firestore directly.
+//
+// The one exception is a live class (liveRooms/*): browsers in the class talk
+// to each other in real time here. The API decides who is in a class (people
+// docs are written only by the API); these rules only let those people read
+// and write the few fields they need.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
       allow read, write: if false;
+    }
+
+    match /liveRooms/{mid} {
+      function roomPath() { return /databases/$(database)/documents/liveRooms/$(mid); }
+      function mePath() { return /databases/$(database)/documents/liveRooms/$(mid)/people/$(request.auth.uid); }
+      function roomLive() { return get(roomPath()).data.status == "live"; }
+      function isHost() { return request.auth != null && roomLive() && get(roomPath()).data.hostId == request.auth.uid; }
+      function isIn() { return request.auth != null && exists(mePath()) && get(mePath()).data.status == "in" && roomLive(); }
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+      // Anyone who has asked to join can see the class status
+      allow get: if request.auth != null && exists(mePath());
+      // The host shares what's on screen and who is speaking
+      allow update: if isHost() && changed().hasOnly(["speakers", "screen", "hostCam", "hostMic"]);
+
+      match /people/{uid} {
+        allow get: if request.auth != null && (request.auth.uid == uid || isHost());
+        allow list: if isHost();
+        allow update: if (request.auth != null && request.auth.uid == uid && resource.data.status == "in" && roomLive()
+                          && changed().hasOnly(["hand", "handAt", "micOn", "camOn"]))
+                      || (isHost() && changed().hasOnly(["canSpeak", "canVideo", "hand", "handAt"]));
+      }
+
+      // Connection details: the host writes the offer, the participant the answer
+      match /signals/{uid} {
+        allow get: if (request.auth != null && request.auth.uid == uid && isIn()) || isHost();
+        allow list: if isHost();
+        allow create, update: if isHost() && uid != request.auth.uid
+                              && request.resource.data.keys().hasOnly(["gen", "offer", "answer", "answerGen", "needOffer", "at"]);
+        allow update: if request.auth != null && request.auth.uid == uid && isIn()
+                      && changed().hasOnly(["answer", "answerGen", "needOffer"]);
+        allow delete: if isHost();
+      }
+
+      // Chat during the class
+      match /chat/{msg} {
+        allow read: if isIn();
+        allow create: if isIn()
+                      && request.resource.data.keys().hasOnly(["uid", "name", "role", "text", "at"])
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.name == get(mePath()).data.name
+                      && request.resource.data.role == get(mePath()).data.role
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 500
+                      && request.resource.data.at == request.time;
+      }
     }
   }
 }

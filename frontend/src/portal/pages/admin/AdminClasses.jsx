@@ -3,7 +3,7 @@ import { Ban, CalendarDays, List, MoreHorizontal, Pencil, Plus, Trash2 } from "l
 import { api } from "../../lib/api.js";
 import { fmtDateTime } from "../../lib/format.js";
 import { Button, Card, Dialog, Empty, ErrorBox, Field, IconButton, Loading, Menu, PageHeader, Segmented, Select, Textarea, useAsync, useUi } from "../../ui/index.jsx";
-import { ClassDetailDialog, ClassFormDialog, ClassRow, CopyLinkButton, JoinButton, WeekCalendar, mondayOf, useNow } from "../../components/classes.jsx";
+import { ClassDetailDialog, ClassFormDialog, ClassRow, JoinButton, WeekCalendar, mondayOf, useNow } from "../../components/classes.jsx";
 import { ScheduleRequestsList } from "../TeacherPages.jsx";
 
 export function AdminClasses() {
@@ -52,8 +52,7 @@ export function AdminClasses() {
 
   const actionsFor = (m) => (
     <>
-      {m.status === "scheduled" && <JoinButton m={m} size="sm" allowEarly />}
-      <CopyLinkButton m={m} />
+      {m.status !== "cancelled" && <JoinButton m={m} size="sm" allowEarly />}
       <Menu
         trigger={<IconButton icon={MoreHorizontal} label="More" />}
         items={[

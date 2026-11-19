@@ -131,9 +131,9 @@ const REPORTS = {
       const now = new Date().toISOString();
       return list
         .sort((a, b) => (a.startAt < b.startAt ? 1 : -1))
-        .map((m) => ({ title: m.title, subject: m.subject, teacher: users[m.teacherId]?.name, students: (m.studentIds || []).map((id) => users[id]?.name || ""), startAt: m.startAt, durationMin: m.durationMin, status: m.status === "scheduled" && m.endAt < now ? "completed" : m.status, recording: m.hasRecording ? "Yes" : "No" }));
+        .map((m) => ({ title: m.title, subject: m.subject, teacher: users[m.teacherId]?.name, students: (m.studentIds || []).map((id) => users[id]?.name || ""), startAt: m.startAt, durationMin: m.durationMin, status: m.status === "scheduled" && m.endAt < now ? "completed" : m.status }));
     },
-    columns: ["title", "subject", "teacher", "students", "startAt", "durationMin", "status", "recording"],
+    columns: ["title", "subject", "teacher", "students", "startAt", "durationMin", "status"],
   },
   attendance: {
     title: "Attendance (one week)",

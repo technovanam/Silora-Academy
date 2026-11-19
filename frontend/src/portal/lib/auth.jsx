@@ -92,7 +92,7 @@ export function AuthProvider({ children }) {
     const events = ["pointerdown", "keydown", "scroll", "touchstart", "mousemove"];
     events.forEach((ev) => window.addEventListener(ev, mark, { passive: true }));
     const timer = setInterval(() => {
-      // Don't time out during a live class
+      // Don't time out while a class is in progress
       if (document.body.dataset.inClass === "1") return mark();
       if (Date.now() - readLast() > timeoutMin * 60000) logout(`You were signed out after ${timeoutMin} minutes of inactivity.`);
     }, 20000);

@@ -16,7 +16,7 @@ if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
   process.exit(1);
 }
 
-const ALL_PERMS = { users: true, contacts: true, classes: true, materials: true, attendance: true, recordings: true, announcements: true, reports: true, notifications: true, backups: true, settings: true };
+const ALL_PERMS = { users: true, contacts: true, classes: true, materials: true, attendance: true, announcements: true, reports: true, notifications: true, backups: true, settings: true };
 
 let user;
 try {

@@ -47,13 +47,7 @@ const env = {
   MAX_MATERIAL_MB: "30",
   MAX_MESSAGE_FILE_MB: "25",
   MESSAGE_FILE_RETENTION_DAYS: "7",
-  RECORDING_RETENTION_DAYS: "7",
-  // LiveKit runs on its own server (not on Firebase); set its public wss:// URL here
-  LIVEKIT_URL: process.env.SILORA_LIVEKIT_URL || readEnv("LIVEKIT_URL"),
-  LIVEKIT_API_KEY: readEnv("LIVEKIT_API_KEY"),
-  LIVEKIT_ROOM_PREFIX: readEnv("LIVEKIT_ROOM_PREFIX") || "silora-class",
-  LIVEKIT_EGRESS_ENABLED: "false",
-  LIVEKIT_AUTO_RECORD: "true",
+  MAX_CLASS_SIZE: readEnv("MAX_CLASS_SIZE") || "30",
   // Cloud Scheduler runs the jobs (see job* functions)
   ENABLE_JOBS: "false",
 };
@@ -69,7 +63,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2";
 
-const SECRETS = ["SERVICE_ACCOUNT_JSON", "SMTP_PASS", "FILE_TOKEN_SECRET", "LIVEKIT_API_SECRET"];
+const SECRETS = ["SERVICE_ACCOUNT_JSON", "SMTP_PASS", "FILE_TOKEN_SECRET"];
 setGlobalOptions({ region: "${REGION}", secrets: SECRETS });
 
 function mapEnv() {
@@ -93,8 +87,7 @@ function replayBody(req) {
   }
 }
 
-// One instance: the class waiting room is kept in memory.
-export const api = onRequest({ memory: "1GiB", cpu: 1, concurrency: 80, maxInstances: 1, minInstances: 0, timeoutSeconds: 300 }, async (req, res) => {
+export const api = onRequest({ memory: "1GiB", cpu: 1, concurrency: 80, maxInstances: 3, minInstances: 0, timeoutSeconds: 300 }, async (req, res) => {
   replayBody(req);
   (await getApp())(req, res);
 });
@@ -106,13 +99,9 @@ const job = (schedule, name) =>
     await JOBS[name]();
   });
 
+// Two scheduler jobs only (Cloud Scheduler is free for 3 jobs per billing account)
 export const jobMinute = job("every 1 minutes", "minute");
-export const jobRetry = job("every 5 minutes", "retry");
-export const jobHourly = job("20 * * * *", "hourly");
-export const jobNightly = job("0 2 * * *", "nightly");
-export const jobAlerts = job("0 9 * * *", "alerts");
-export const jobAttendance = job("0 10 * * 6", "attendance");
-export const jobAttendanceSunday = job("0 18 * * 0", "attendance");
+export const jobHourly = job("0 * * * *", "hourly");
 `
 );
 

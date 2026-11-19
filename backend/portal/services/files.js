@@ -48,13 +48,6 @@ export const MATERIAL_TYPES = {
   m4a: ["mp4", "audio/mp4", "Audio"],
   zip: ["zip", "application/zip", "ZIP"],
 };
-export const RECORDING_TYPES = {
-  mp4: MATERIAL_TYPES.mp4,
-  webm: MATERIAL_TYPES.webm,
-  mp3: MATERIAL_TYPES.mp3,
-  m4a: MATERIAL_TYPES.m4a,
-  wav: ["wav", "audio/wav", "Audio"],
-};
 
 const BLOCKED_SIGNATURES = [
   (b) => b[0] === 0x4d && b[1] === 0x5a, // Windows executable (MZ)
@@ -68,7 +61,7 @@ export function safeFileName(name) {
 }
 
 /** Validate an uploaded buffer. Returns { ext, contentType, label }. Throws 400 on failure. */
-export function validateFile(buffer, originalName, allowed = MATERIAL_TYPES, maxMb = config.maxMaterialMb) {
+function validateFile(buffer, originalName, allowed = MATERIAL_TYPES, maxMb = config.maxMaterialMb) {
   if (!buffer?.length) fail(400, "The file is empty");
   if (buffer.length > maxMb * 1024 * 1024) fail(400, `File is too large (max ${maxMb} MB)`);
   const ext = path.extname(originalName || "").slice(1).toLowerCase();
@@ -84,7 +77,7 @@ export function validateFile(buffer, originalName, allowed = MATERIAL_TYPES, max
  * Malware scan through a ClamAV daemon (clamd INSTREAM). Returns
  * { status: "clean" | "infected" | "skipped" | "error", detail }.
  */
-export function scanBuffer(buffer) {
+function scanBuffer(buffer) {
   if (!config.clamdHost) return Promise.resolve({ status: "skipped", detail: "Malware scanner not configured" });
   return new Promise((resolve) => {
     const socket = net.createConnection({ host: config.clamdHost, port: config.clamdPort });

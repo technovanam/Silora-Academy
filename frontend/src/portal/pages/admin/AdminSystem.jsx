@@ -242,7 +242,6 @@ export function AdminSettings() {
               <Input min={1} max={90} {...num("retention.backupsKeep")} />
             </Field>
           </div>
-          <Notice className="mt-5">Class recordings are always deleted 7 days after the class (set on the server with RECORDING_RETENTION_DAYS).</Notice>
         </Card>
       </div>
     </>

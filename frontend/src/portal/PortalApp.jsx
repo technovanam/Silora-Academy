@@ -2,12 +2,13 @@
 // PORTAL ROUTES – /portal/*
 // ============================================================
 import React, { Suspense, lazy, useEffect } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, can } from "./lib/auth.jsx";
 import { UiProvider, Loading, Empty } from "./ui/index.jsx";
-import { Link2Off, ShieldOff } from "lucide-react";
-import { api } from "./lib/api.js";
+import { ShieldOff } from "lucide-react";
 import PortalLayout from "./PortalLayout.jsx";
+
+const ClassRoom = lazy(() => import("./pages/ClassRoom.jsx"));
 import { LoginPage, ForgotPasswordPage, ResetPasswordPage, homeFor } from "./pages/AuthPages.jsx";
 import { NotificationsPage, AnnouncementsPage, ProfilePage } from "./pages/SharedPages.jsx";
 import { StudentDashboard, StudentClasses, StudentMaterials, StudentAttendance, StudentProgress } from "./pages/StudentPages.jsx";
@@ -15,13 +16,12 @@ import { TeacherDashboard, TeacherCalendar, TeacherStudents, TeacherStudentDetai
 import { AdminDashboard, AdminAlerts } from "./pages/admin/AdminDashboard.jsx";
 import { AdminUsersPage, AdminUserDetail, AdminAdminsPage } from "./pages/admin/AdminUsers.jsx";
 import { AdminClasses, AdminRequests } from "./pages/admin/AdminClasses.jsx";
-import { AdminMaterials, AdminAttendance, AdminRecordings } from "./pages/admin/AdminContent.jsx";
+import { AdminMaterials, AdminAttendance } from "./pages/admin/AdminContent.jsx";
 import { AdminAnnouncements, AdminNotifications } from "./pages/admin/AdminComms.jsx";
 import { AdminReports, AdminSettings, AdminBackups } from "./pages/admin/AdminSystem.jsx";
 import { MessagesPage, AdminMessagesPage } from "./pages/MessagesPage.jsx";
 
-// The live classroom pulls in LiveKit, so it loads only when someone joins a class
-const ClassRoom = lazy(() => import("./pages/ClassRoom.jsx"));
+// The class page loads only when someone opens a class
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -37,21 +37,6 @@ function Role({ role, perm, superOnly, children }) {
   if ((perm && !can(user, perm)) || (superOnly && !user.superAdmin))
     return <Empty icon={ShieldOff} title="You don't have access to this page" text="Ask a super admin to give your account this permission." />;
   return children;
-}
-
-// Shared class link (/portal/join/abc-defg-hij) → the class's join screen
-function JoinByLink() {
-  const { code } = useParams();
-  const navigate = useNavigate();
-  const [error, setError] = React.useState(null);
-  useEffect(() => {
-    api
-      .get(`/meetings/code/${encodeURIComponent(code)}`)
-      .then((r) => navigate(`/portal/class/${r.id}?code=${encodeURIComponent(r.code)}`, { replace: true }))
-      .catch(setError);
-  }, [code, navigate]);
-  if (error) return <Empty icon={Link2Off} className="min-h-svh" title="Can't open this class link" text={error.message} action={<a href="/portal" className="font-semibold text-navy underline">Go to the portal</a>} />;
-  return <Loading className="min-h-svh" label="Opening class…" />;
 }
 
 function Home() {
@@ -91,18 +76,10 @@ export default function PortalApp() {
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
           <Route path="reset-password" element={<ResetPasswordPage />} />
           <Route
-            path="join/:code"
-            element={
-              <RequireAuth>
-                <JoinByLink />
-              </RequireAuth>
-            }
-          />
-          <Route
             path="class/:id"
             element={
               <RequireAuth>
-                <Suspense fallback={<div className="flex h-svh items-center justify-center bg-[#0b1724]"><Loading label="Opening classroom…" /></div>}>
+                <Suspense fallback={<div className="flex h-svh items-center justify-center bg-[#0b1724]"><Loading label="Opening class…" /></div>}>
                   <ClassRoom />
                 </Suspense>
               </RequireAuth>
@@ -145,7 +122,6 @@ export default function PortalApp() {
             <Route path="admin/schedule-requests" element={<Navigate to="/portal/admin/requests" replace />} />
             <Route path="admin/materials" element={A("materials", <AdminMaterials />)} />
             <Route path="admin/attendance" element={A("attendance", <AdminAttendance />)} />
-            <Route path="admin/recordings" element={A("recordings", <AdminRecordings />)} />
             <Route path="admin/messages" element={A("messages", <AdminMessagesPage />)} />
             <Route path="admin/announcements" element={A("announcements", <AdminAnnouncements />)} />
             <Route path="admin/notifications" element={A("notifications", <AdminNotifications />)} />

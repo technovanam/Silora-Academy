@@ -1,5 +1,5 @@
 rules_version = '2';
-// Materials, recordings and backups are only served through the Node API,
+// Materials and backups are only served through the Node API,
 // which checks who is allowed to open each file. No direct browser access.
 service firebase.storage {
   match /b/{bucket}/o {

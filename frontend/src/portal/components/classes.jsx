@@ -3,21 +3,24 @@
 // ============================================================
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, FileVideo, Link2, Repeat, Users, Video } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Repeat, Users, Video } from "lucide-react";
 import { api } from "../lib/api.js";
 import { fmtDay, fmtTime, fromLocalInput, toLocalInput } from "../lib/format.js";
 import { Badge, Button, Dialog, Field, Input, Notice, Select, Textarea, cx, useUi } from "../ui/index.jsx";
 
-export const JOIN_EARLY_MIN = 15;
-export const MAX_GROUP = 5;
+export const MAX_GROUP = 30; // same as MAX_CLASS_SIZE on the backend
+export const OPEN_EARLY_MIN = 15; // the class can be joined this long before it starts (OPEN_EARLY_MIN on the backend)
+const OPEN_LATE_MIN = 60;
 
-export function joinState(m, now = Date.now()) {
+// Where a class is in time: "upcoming", "live" (between start and end), "overtime"
+// (up to 30 minutes after the end) or "ended"
+export function classState(m, now = Date.now()) {
   if (m.status === "cancelled") return "cancelled";
   const start = new Date(m.startAt).getTime();
   const end = new Date(m.endAt).getTime();
   if (now > end + 30 * 60000) return "ended";
-  if (now >= start - JOIN_EARLY_MIN * 60000) return now >= start && now <= end ? "live" : now < start ? "open" : "overtime";
-  return "upcoming";
+  if (now < start) return "upcoming";
+  return now <= end ? "live" : "overtime";
 }
 
 const STATUS = {
@@ -26,11 +29,11 @@ const STATUS = {
   cancelled: ["red", "Cancelled"],
 };
 export function ClassStatus({ m }) {
-  const js = joinState(m);
+  const js = classState(m);
   if (m.status === "scheduled" && (js === "live" || js === "overtime"))
     return (
       <Badge tone="red" dot>
-        Live now
+        In progress
       </Badge>
     );
   const [tone, label] = STATUS[m.status] || ["gray", m.status];
@@ -46,51 +49,64 @@ export function useNow(intervalMs = 30000) {
   return now;
 }
 
+// Opens the live class screen. Students and teachers can join from 15 minutes before
+// the start; admins (allowEarly) at any time.
 export function JoinButton({ m, size = "md", className, allowEarly }) {
   const navigate = useNavigate();
   const now = useNow();
-  const js = joinState(m, now);
-  if (m.status === "cancelled" || js === "ended") return null;
-  const canJoin = allowEarly || js !== "upcoming";
-  const mins = Math.ceil((new Date(m.startAt).getTime() - JOIN_EARLY_MIN * 60000 - now) / 60000);
+  const start = new Date(m.startAt).getTime();
+  const end = new Date(m.endAt).getTime();
+  if (m.status === "cancelled" || now > end + OPEN_LATE_MIN * 60000) return null;
+  const opens = start - OPEN_EARLY_MIN * 60000;
+  const open = allowEarly || now >= opens;
+  const live = now >= start && now <= end;
+  const mins = Math.ceil((opens - now) / 60000);
+  const wait = mins > 60 * 24 ? `Opens ${fmtDay(new Date(opens))}` : `Opens in ${mins > 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`}`;
   return (
-    <Button size={size} className={className} icon={Video} variant={js === "live" || js === "overtime" ? "success" : "primary"} disabled={!canJoin} onClick={() => navigate(`/portal/class/${m.id}`)} title={canJoin ? "" : `Opens ${JOIN_EARLY_MIN} minutes before the start`}>
-      {canJoin ? (js === "live" || js === "overtime" ? "Join now" : "Join class") : mins > 60 * 24 ? `Opens ${fmtDay(new Date(new Date(m.startAt).getTime() - JOIN_EARLY_MIN * 60000))}` : `Opens in ${mins > 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`}`}
+    <Button size={size} className={className} icon={Video} variant={live ? "success" : "primary"} disabled={!open} title={open ? "" : `Opens ${OPEN_EARLY_MIN} minutes before the start`} onClick={(e) => (e.stopPropagation(), navigate(`/portal/class/${m.id}`))}>
+      {open ? (live ? "Join now" : "Join class") : wait}
     </Button>
   );
 }
 
-// Copy the shareable class link (teachers and admins). Students who open it ask to join.
-export async function copyClassLink(m, ui) {
-  if (!m?.joinUrl) return;
-  try {
-    await navigator.clipboard.writeText(m.joinUrl);
-    ui.toast("Class link copied – students who open it ask to join");
-  } catch {
-    ui.toast(m.joinUrl, "info");
-  }
-}
-
-export function CopyLinkButton({ m }) {
-  const ui = useUi();
-  const [done, setDone] = useState(false);
-  const now = useNow();
-  if (!m?.joinUrl || m.status !== "scheduled" || joinState(m, now) === "ended") return null;
+// Who joined the live class and for how long (teachers and admins)
+export function LiveAttendance({ meeting }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let dead = false;
+    api
+      .get(`/meetings/${meeting.id}/live/attendance`)
+      .then((r) => !dead && setData(r))
+      .catch((e) => !dead && setError(e));
+    return () => {
+      dead = true;
+    };
+  }, [meeting.id]);
+  if (error) return <p className="text-sm text-rose-600">{error.message}</p>;
+  if (!data) return <p className="text-sm text-muted">Loading attendance…</p>;
+  if (!data.started) return <p className="text-sm text-muted">The live class hasn't been started yet.</p>;
+  const came = data.students.filter((s) => s.joined).length;
   return (
-    <button
-      type="button"
-      onClick={async (e) => {
-        e.stopPropagation();
-        await copyClassLink(m, ui);
-        setDone(true);
-        setTimeout(() => setDone(false), 2000);
-      }}
-      aria-label="Copy class link"
-      title="Copy class link"
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-    >
-      {done ? <Check className="h-[18px] w-[18px] text-emerald-600" /> : <Link2 className="h-[18px] w-[18px]" />}
-    </button>
+    <div>
+      <p className="text-sm text-muted">
+        {came} of {data.students.length} joined{data.live ? " · class is live now" : ""}
+      </p>
+      <ul className="mt-2 divide-y divide-line rounded-xl border border-line">
+        {data.students.map((s) => (
+          <li key={s.userId} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+            <span className="truncate text-ink">{s.name}</span>
+            {s.joined ? (
+              <span className="shrink-0 text-slate-600">
+                {s.inClassNow && <Badge tone="green">In class</Badge>} {s.minutes} min · joined {fmtTime(s.firstJoinedAt)}
+              </span>
+            ) : (
+              <Badge tone="red">Absent</Badge>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -113,11 +129,6 @@ export function ClassRow({ m, showStudents = true, showTeacher = false, actions,
               </Badge>
             )}
             {m.pendingRequest && <Badge tone="amber">{m.pendingRequest.type === "cancel" ? "Cancel requested" : "Reschedule requested"}</Badge>}
-            {m.hasRecording && (
-              <Badge tone="gray">
-                <FileVideo className="h-3 w-3" /> Recorded
-              </Badge>
-            )}
           </div>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted">
             <span className="inline-flex items-center gap-1">
@@ -216,7 +227,7 @@ export function WeekCalendar({ weekStart, onWeekChange, meetings, onSelect, show
 }
 
 function EventChip({ m, onClick, showTeacher }) {
-  const js = joinState(m);
+  const js = classState(m);
   const tone =
     m.status === "cancelled" ? "border-rose-200 bg-rose-50 text-rose-700" : js === "ended" || m.status === "completed" ? "border-line bg-surface text-slate-500" : js === "live" || js === "overtime" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-sky-200 bg-sky-50 text-sky-900";
   return (
@@ -428,7 +439,6 @@ export function RequestDialog({ open, onClose, meeting, onSaved }) {
 }
 
 export function ClassDetailDialog({ meeting, onClose, actions }) {
-  const ui = useUi();
   if (!meeting) return null;
   return (
     <Dialog open={!!meeting} onClose={onClose} title={meeting.title} subtitle={meeting.subject} footer={actions}>
@@ -459,18 +469,6 @@ export function ClassDetailDialog({ meeting, onClose, actions }) {
               </dd>
             </div>
           )}
-          {meeting.joinUrl && meeting.status === "scheduled" && (
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Class link</dt>
-              <dd className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 py-1.5 pl-3 pr-1.5">
-                <span className="min-w-0 flex-1 select-all truncate font-mono text-[13px] text-ink">{meeting.joinUrl}</span>
-                <Button size="sm" variant="outline" icon={Link2} onClick={() => copyClassLink(meeting, ui)}>
-                  Copy
-                </Button>
-              </dd>
-              <p className="mt-1 text-xs text-muted">Share it with students. They sign in and ask to join; you let them in from the class.</p>
-            </div>
-          )}
           {meeting.notes && (
             <div className="sm:col-span-2">
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</dt>
@@ -481,6 +479,14 @@ export function ClassDetailDialog({ meeting, onClose, actions }) {
             <div className="sm:col-span-2">
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Cancellation reason</dt>
               <dd className="text-[15px] text-rose-600">{meeting.cancelledReason}</dd>
+            </div>
+          )}
+          {meeting.students && meeting.status !== "cancelled" && new Date(meeting.startAt).getTime() - OPEN_EARLY_MIN * 60000 <= Date.now() && (
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Live class attendance</dt>
+              <dd className="mt-1">
+                <LiveAttendance meeting={meeting} />
+              </dd>
             </div>
           )}
         </dl>

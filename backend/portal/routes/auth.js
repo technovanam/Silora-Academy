@@ -164,7 +164,6 @@ meRouter.get(
       teacher,
       settings: {
         sessionTimeoutMin: req.settings.sessionTimeoutMin,
-        videoServer: "livekit",
         classReminderMinutes: req.settings.classReminderMinutes,
         timezone: config.timezone,
         pushAvailable: !config.useEmulators,

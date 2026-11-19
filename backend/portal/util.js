@@ -124,12 +124,4 @@ export function verifyToken(token, secret = config.fileTokenSecret) {
   return payload;
 }
 
-// Standard HS256 JWT
-export function signJwt(payload, secret) {
-  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const body = b64url(JSON.stringify(payload));
-  const sig = b64url(crypto.createHmac("sha256", secret).update(`${header}.${body}`).digest());
-  return `${header}.${body}.${sig}`;
-}
-
 export const clientIp = (req) => (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket?.remoteAddress || "";

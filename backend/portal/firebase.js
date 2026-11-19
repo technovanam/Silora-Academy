@@ -41,6 +41,7 @@ export const C = {
   contacts: "contacts", // contact details – admin + the user themselves only
   loginEvents: "loginEvents",
   meetings: "meetings",
+  liveRooms: "liveRooms", // live class: room, people (waiting / in class), signals, chat
   scheduleRequests: "scheduleRequests",
   materials: "materials",
   materialOpens: "materialOpens",
@@ -52,10 +53,8 @@ export const C = {
   pushTokens: "pushTokens",
   announcements: "announcements",
   announcementReads: "announcementReads",
-  recordings: "recordings",
   conversations: "conversations", // teacher–student chats (+ messages subcollection)
   messageFiles: "messageFiles", // chat attachments and when to delete them
-  transcriptParts: "transcriptParts", // per-speaker transcript pieces (backend only)
   activity: "activityLogs",
   audit: "auditLogs",
   settings: "settings",

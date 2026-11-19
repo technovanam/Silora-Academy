@@ -31,13 +31,12 @@ export const config = {
   apiPublicUrl: (process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/$/, ""),
   timezone: process.env.APP_TIMEZONE || "Asia/Kolkata",
 
-  // Secret used to sign short-lived file links (materials, recordings, backups)
+  // Secret used to sign short-lived file links (materials, backups)
   fileTokenSecret: process.env.FILE_TOKEN_SECRET || "dev-only-change-me-file-token-secret",
   fileTokenTtlSec: num(process.env.FILE_TOKEN_TTL_SEC, 15 * 60),
 
   // Uploads
   maxMaterialMb: num(process.env.MAX_MATERIAL_MB, 50),
-  maxRecordingMb: num(process.env.MAX_RECORDING_MB, 2048),
   // Files sent in Messages: max size and how long they are kept
   maxMessageFileMb: num(process.env.MAX_MESSAGE_FILE_MB, 25),
   messageFileRetentionDays: num(process.env.MESSAGE_FILE_RETENTION_DAYS, 7),
@@ -45,34 +44,8 @@ export const config = {
   clamdHost: process.env.CLAMD_HOST || "",
   clamdPort: num(process.env.CLAMD_PORT, 3310),
 
-  // LiveKit (open-source WebRTC SFU, self-hosted). Dev: `livekit-server --dev` (keys devkey / secret).
-  livekit: {
-    // URL browsers connect to (ws:// locally, wss:// in production)
-    url: (process.env.LIVEKIT_URL || "ws://localhost:7880").replace(/\/$/, ""),
-    // URL the backend uses for the server API (defaults to LIVEKIT_URL with http/https)
-    apiUrl: (process.env.LIVEKIT_API_URL || (process.env.LIVEKIT_URL || "ws://localhost:7880").replace(/^ws/, "http")).replace(/\/$/, ""),
-    apiKey: process.env.LIVEKIT_API_KEY || "devkey",
-    apiSecret: process.env.LIVEKIT_API_SECRET || "secret",
-    roomPrefix: process.env.LIVEKIT_ROOM_PREFIX || "silora-class",
-    // Recording through LiveKit Egress (needs the egress service, see livekit/README.md)
-    egressEnabled: bool(process.env.LIVEKIT_EGRESS_ENABLED, false),
-    // Record every class automatically when the teacher joins. Only admins see that
-    // a class is being recorded; teachers and students get no indicator.
-    autoRecord: bool(process.env.LIVEKIT_AUTO_RECORD, true),
-    // Folder egress writes into (as seen by the egress container) and the same folder as seen by this backend
-    egressOutputDir: (process.env.LIVEKIT_EGRESS_OUTPUT_DIR || "/out").replace(/\/$/, ""),
-    recordingsDir: process.env.LIVEKIT_RECORDINGS_DIR || "",
-  },
-  // Automatic transcripts: each person's mic is captured separately and run through a
-  // self-hosted whisper.cpp server (see ../whisper/README.md). Empty URL = off.
-  whisper: {
-    url: (process.env.WHISPER_URL || "").replace(/\/$/, ""),
-    language: process.env.WHISPER_LANGUAGE || "auto", // "auto" or a code like "en"
-    timeoutMin: num(process.env.WHISPER_TIMEOUT_MIN, 120),
-  },
-  // Shared secret for uploading a recording through POST /recordings/ingest (scripts / tools)
-  recordingIngestSecret: process.env.RECORDING_INGEST_SECRET || "",
-  recordingRetentionDays: num(process.env.RECORDING_RETENTION_DAYS, 7),
+  // Most students in one class (scheduling only – there is no live video in the portal)
+  maxClassSize: num(process.env.MAX_CLASS_SIZE, 30),
 
   // Email goes out through SMTP (backend/mailer.js)
   mailFrom: process.env.MAIL_FROM || process.env.PORTAL_MAIL_FROM || `Silora Academy <${process.env.MAIL_USER || "info@siloraacademy.com"}>`,

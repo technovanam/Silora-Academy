@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  Bell, BookOpen, CalendarDays, CalendarClock, ChartColumn, ClipboardCheck, Database, FileVideo, FolderOpen, GraduationCap, LayoutDashboard,
+  Bell, BookOpen, CalendarDays, CalendarClock, ChartColumn, ClipboardCheck, Database, FolderOpen, GraduationCap, LayoutDashboard,
   KeyRound, LogOut, MessagesSquare, ChevronRight, ChevronDown, PanelLeftClose, PanelLeftOpen, Megaphone, Menu, Settings, ShieldCheck, Siren, TrendingUp, User, Users, X, BellRing, CheckCheck, ExternalLink,
 } from "lucide-react";
 import { SITE } from "../data/site";
@@ -88,7 +88,6 @@ export function navFor(user) {
     { to: "/portal/admin/requests", label: "Schedule requests", icon: CalendarClock, perm: "classes" },
     { to: "/portal/admin/materials", label: "Materials", icon: FolderOpen, perm: "materials" },
     { to: "/portal/admin/attendance", label: "Attendance", icon: ClipboardCheck, perm: "attendance" },
-    { to: "/portal/admin/recordings", label: "Recordings", icon: FileVideo, perm: "recordings" },
     { section: "Communication" },
     { to: "/portal/admin/messages", label: "Messages", icon: MessagesSquare, perm: "messages" },
     { to: "/portal/admin/announcements", label: "Announcements", icon: Megaphone, perm: "announcements" },
