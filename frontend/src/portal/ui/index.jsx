@@ -147,7 +147,7 @@ export function Avatar({ name, size = "md", className }) {
 }
 
 export function Progress({ value = 0, tone = "brand", className }) {
-  const c = { brand: "bg-brand", green: "bg-emerald-500", blue: "bg-sky-500" }[tone];
+  const c = { brand: "bg-brand", green: "bg-emerald-500", blue: "bg-sky-500", amber: "bg-amber-500", red: "bg-rose-500" }[tone];
   return (
     <div className={cx("h-2 w-full overflow-hidden rounded-full bg-slate-100", className)}>
       <div className={cx("h-full rounded-full transition-all", c)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />

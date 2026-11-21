@@ -158,8 +158,10 @@ const REPORTS = {
     },
     columns: ["title", "subject", "teacher", "type", "version", "status", "publishedAt", "assigned", "opened", "notOpened"],
   },
+  // Activity log & login history have their own tabs (and CSV export there), so they're not in the report list
   activity: {
     title: "Activity log",
+    listed: false,
     async rows(q) {
       return sinceFilter(listData(await db.collection(C.activity).get()), q.days || 30)
         .sort((a, b) => (a.at < b.at ? 1 : -1))
@@ -169,6 +171,7 @@ const REPORTS = {
   },
   logins: {
     title: "Login history",
+    listed: false,
     async rows(q) {
       return sinceFilter(listData(await db.collection(C.loginEvents).get()), q.days || 30)
         .sort((a, b) => (a.at < b.at ? 1 : -1))
@@ -189,7 +192,7 @@ const REPORTS = {
 };
 const label = (k) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 
-router.get("/reports", requirePerm("reports"), (req, res) => res.json({ reports: Object.entries(REPORTS).map(([id, r]) => ({ id, title: r.title })) }));
+router.get("/reports", requirePerm("reports"), (req, res) => res.json({ reports: Object.entries(REPORTS).filter(([, r]) => r.listed !== false).map(([id, r]) => ({ id, title: r.title })) }));
 
 router.get(
   "/reports/:id",

@@ -19,7 +19,7 @@ function ReportsTab() {
   const list = useAsync(() => api.get("/admin/reports"), []);
   const [id, setId] = useState("students");
   const [days, setDays] = useState(30);
-  const needsDays = ["activity", "logins", "notifications"].includes(id);
+  const needsDays = id === "notifications";
   const report = useAsync(() => api.get(`/admin/reports/${id}`, needsDays ? { days } : undefined), [id, days]);
   const blocked = (rid) => (rid === "attendance" && !can(user, "attendance")) || (rid === "notifications" && !can(user, "notifications"));
   const exportCsv = () => api.download(`/admin/reports/${id}`, { format: "csv", ...(needsDays ? { days } : {}) }).catch(ui.error);
@@ -69,6 +69,7 @@ function ReportsTab() {
 }
 
 function LogTab({ kind }) {
+  const ui = useUi();
   const [q, setQ] = useState("");
   const [days, setDays] = useState(kind === "audit" ? 90 : 30);
   const [result, setResult] = useState("all");
@@ -116,6 +117,11 @@ function LogTab({ kind }) {
         )}
         <div className="flex-1" />
         <SearchInput value={q} onChange={setQ} className="w-full sm:w-64" />
+        {kind !== "audit" && (
+          <Button size="sm" icon={Download} onClick={() => api.download(`/admin/reports/${kind}`, { format: "csv", days }).catch(ui.error)}>
+            Export CSV
+          </Button>
+        )}
       </div>
       {kind === "logins" && data?.stats && (
         <div className="mb-4 grid gap-3 sm:grid-cols-3">

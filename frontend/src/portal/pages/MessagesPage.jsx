@@ -2,15 +2,17 @@
 // MESSAGES – private teacher ↔ student chat with file sharing.
 // Files are deleted automatically after 7 days (the message
 // stays and shows the file as expired). Admins with the
-// "messages" permission get a read-only view of every chat.
+// "messages" permission get two tabs: their own direct chats
+// with teachers / students, and a read-only view of every
+// teacher–student chat.
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Ban, Check, CheckCheck, ChevronDown, Copy, Download, Eraser, FileText, Image as ImageIcon, Loader2, MessagesSquare, MoreVertical, Paperclip, Pencil, PenSquare, Send, Trash2, X } from "lucide-react";
+import { ArrowLeft, Ban, Eye, Check, CheckCheck, ChevronDown, Copy, Download, Eraser, FileText, Image as ImageIcon, Loader2, MessagesSquare, MoreVertical, Paperclip, Pencil, PenSquare, Send, Trash2, X } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { fmtDate, fmtSize, fmtTime, fromNow } from "../lib/format.js";
-import { Avatar, Button, Card, Dialog, Empty, ErrorBox, IconButton, Loading, Menu, PageHeader, SearchInput, cx, useUi } from "../ui/index.jsx";
+import { Avatar, Button, Card, Dialog, Empty, ErrorBox, IconButton, Loading, Menu, PageHeader, SearchInput, Segmented, cx, useUi } from "../ui/index.jsx";
 
 const ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.mp3,.m4a,.zip";
 const MAX_MB = 25;
@@ -26,23 +28,49 @@ const dayLabel = (iso) => {
   return fmtDate(iso);
 };
 
+const ROLE_LABEL = { admin: "Silora Academy admin", teacher: "Teacher", student: "Student" };
+
 // ---- Teachers & students ------------------------------------------------------------------
 export function MessagesPage() {
   const { user } = useAuth();
   return <Inbox mode="member" viewerId={user.id} viewerRole={user.role} />;
 }
 
-// ---- Admins: read-only view of every conversation -----------------------------------------
+// ---- Admins: direct messages + read-only view of teacher–student chats ---------------------
 export function AdminMessagesPage() {
   const { user } = useAuth();
-  return <Inbox mode="admin" viewerId={user.id} viewerRole="admin" />;
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "monitor" ? "monitor" : "direct";
+  return (
+    <>
+      <PageHeader
+        title="Messages"
+        subtitle={tab === "direct" ? "Message teachers and students directly. They can reply to you here." : "Every conversation between teachers and students. Read-only."}
+      />
+      <Segmented
+        className="mb-4"
+        value={tab}
+        onChange={(t) => setParams(t === "direct" ? {} : { tab: t })}
+        options={[
+          { value: "direct", label: "Direct messages", icon: MessagesSquare },
+          { value: "monitor", label: "Teacher–student chats", icon: Eye },
+        ]}
+      />
+      <Inbox key={tab} mode={tab} viewerId={user.id} viewerRole="admin" embedded />
+    </>
+  );
 }
 
-function Inbox({ mode, viewerId, viewerRole }) {
-  const admin = mode === "admin";
-  const base = admin ? "/admin/messages" : "/messages";
+/**
+ * mode: "member" (teacher / student), "direct" (an admin's own chats),
+ * "monitor" (admin read-only view of teacher–student chats).
+ */
+function Inbox({ mode, viewerId, viewerRole, embedded }) {
+  const admin = mode === "monitor";
+  const base = { member: "/messages", direct: "/admin/dm", monitor: "/admin/messages" }[mode];
   const [params, setParams] = useSearchParams();
   const active = params.get("c") || null;
+  const tabParam = params.get("tab");
   const [list, setList] = useState(null);
   const [error, setError] = useState(null);
   const [q, setQ] = useState("");
@@ -64,7 +92,7 @@ function Inbox({ mode, viewerId, viewerRole }) {
     return () => clearInterval(t);
   }, [loadList]);
 
-  const open = (id) => setParams(id ? { c: id } : {}, { replace: false });
+  const open = (id) => setParams({ ...(tabParam ? { tab: tabParam } : {}), ...(id ? { c: id } : {}) }, { replace: false });
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -77,23 +105,30 @@ function Inbox({ mode, viewerId, viewerRole }) {
 
   return (
     <>
-      <PageHeader
-        title="Messages"
-        subtitle={admin ? "Every conversation between teachers and students. Read-only." : viewerRole === "teacher" ? "Chat privately with your students and share files." : "Chat privately with your teacher and share files."}
-        actions={
-          !admin && (
+      {!embedded && (
+        <PageHeader
+          title="Messages"
+          subtitle={viewerRole === "teacher" ? "Chat privately with your students and share files." : "Chat privately with your teacher and share files."}
+          actions={
             <Button icon={PenSquare} onClick={() => setPicker(true)}>
               New message
             </Button>
-          )
-        }
-      />
+          }
+        />
+      )}
+      {mode === "direct" && (
+        <div className="-mt-1 mb-4 flex justify-end">
+          <Button icon={PenSquare} onClick={() => setPicker(true)}>
+            New message
+          </Button>
+        </div>
+      )}
       <Card flush className="overflow-hidden">
-        <div className="grid h-[calc(100svh-12.5rem)] min-h-[28rem] md:grid-cols-[20rem_1fr]">
+        <div className={cx("grid min-h-[28rem] md:grid-cols-[20rem_1fr]", embedded ? "h-[calc(100svh-17rem)]" : "h-[calc(100svh-12.5rem)]")}>
           {/* Conversation list */}
           <div className={cx("flex min-h-0 flex-col border-line md:border-r", active && "hidden md:flex")}>
             <div className="border-b border-line p-3">
-              <SearchInput value={q} onChange={setQ} placeholder={admin ? "Search teacher or student…" : "Search…"} />
+              <SearchInput value={q} onChange={setQ} placeholder={admin || mode === "direct" ? "Search teacher or student…" : "Search…"} />
             </div>
             <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto" data-lenis-prevent>
               {error && !list ? (
@@ -106,7 +141,7 @@ function Inbox({ mode, viewerId, viewerRole }) {
                 <Empty
                   icon={MessagesSquare}
                   title={q ? "No matches" : "No conversations yet"}
-                  text={q ? "Try another name." : admin ? "Messages between teachers and students will appear here." : "Start one with “New message”."}
+                  text={q ? "Try another name." : admin ? "Messages between teachers and students will appear here." : mode === "direct" ? "Message a teacher or student with “New message”." : "Start one with “New message”."}
                   className="py-14"
                 />
               ) : (
@@ -133,6 +168,8 @@ function Inbox({ mode, viewerId, viewerRole }) {
       </Card>
       {!admin && (
         <ContactPicker
+          base={base}
+          groupByRole={mode === "direct"}
           open={picker}
           onClose={() => setPicker(false)}
           onPicked={async (id) => {
@@ -180,7 +217,7 @@ function ConversationRow({ c, admin, viewerId, active, onClick }) {
           <p className={cx("min-w-0 flex-1 truncate text-sm", c.unread ? "font-bold text-navy" : "font-semibold text-ink")}>{title}</p>
           {c.lastAt && <span className="shrink-0 text-[11px] text-slate-400">{fromNow(c.lastAt)}</span>}
         </div>
-        {admin && <p className="truncate text-[11px] text-slate-400">Teacher · Student</p>}
+        {admin ? <p className="truncate text-[11px] text-slate-400">Teacher · Student</p> : c.otherRole && (c.kind === "direct" || c.otherRole === "admin") ? <p className="truncate text-[11px] text-slate-400">{ROLE_LABEL[c.otherRole]}</p> : null}
         <div className="flex items-center gap-2">
           {mineLast && !last.deleted && <Ticks state={tickState(last.at, c)} className="-mr-1 shrink-0" />}
           <p className={cx("min-w-0 flex-1 truncate text-[13px]", last?.deleted && "italic", c.unread ? "font-medium text-ink" : "text-muted")}>{preview}</p>
@@ -226,10 +263,10 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
   const markRead = useCallback(() => {
     if (admin) return; // an admin reading changes nothing
     api
-      .post(`/messages/conversations/${id}/read`)
+      .post(`${base}/conversations/${id}/read`)
       .then(() => window.dispatchEvent(new Event("portal:messages-read")))
       .catch(() => {});
-  }, [admin, id]);
+  }, [admin, base, id]);
 
   // First page
   useEffect(() => {
@@ -316,7 +353,7 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
 
   const remove = async (m, scope) => {
     try {
-      await api.del(`/messages/conversations/${id}/messages/${m.id}?for=${scope}`);
+      await api.del(`${base}/conversations/${id}/messages/${m.id}?for=${scope}`);
       setMessages((cur) => (scope === "me" ? cur.filter((x) => x.id !== m.id) : cur.map((x) => (x.id === m.id ? { ...x, deleted: true, text: "", file: null } : x))));
       if (editing?.id === m.id) setEditing(null);
       setDeleting(null);
@@ -334,7 +371,7 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
         : "All messages will be removed for you. The other person keeps their copy.",
       confirmLabel: removeChat ? "Delete chat" : "Clear chat",
       danger: true,
-      onConfirm: () => api.post(`/messages/conversations/${id}/clear`, { remove: removeChat }),
+      onConfirm: () => api.post(`${base}/conversations/${id}/clear`, { remove: removeChat }),
     });
     if (!ok) return;
     setMessages([]);
@@ -354,7 +391,7 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
         {conv && <Avatar name={admin ? conv.teacherName : conv.otherName} />}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-navy">{title || "…"}</p>
-          <p className="truncate text-xs text-muted">{admin ? "Teacher · Student" : summary?.otherId ? "Private conversation" : ""}</p>
+          <p className="truncate text-xs text-muted">{admin ? "Teacher · Student" : conv?.kind === "direct" || conv?.otherRole === "admin" ? ROLE_LABEL[conv.otherRole] || "" : conv?.otherId ? "Private conversation" : ""}</p>
         </div>
         {!admin && messages && (
           <Menu
@@ -417,7 +454,7 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
         )}
       </div>
 
-      {!admin && messages && <Composer id={id} onSent={onSent} editing={editing} onEdited={onEdited} onCancelEdit={() => setEditing(null)} />}
+      {!admin && messages && <Composer base={base} id={id} onSent={onSent} editing={editing} onEdited={onEdited} onCancelEdit={() => setEditing(null)} />}
       {!admin && <DeleteDialog m={deleting} viewerId={viewerId} onClose={() => setDeleting(null)} onDelete={remove} />}
     </>
   );
@@ -603,7 +640,7 @@ function Attachment({ file, mine, convId, messageId, base }) {
   );
 }
 
-function Composer({ id, onSent, editing, onEdited, onCancelEdit }) {
+function Composer({ base, id, onSent, editing, onEdited, onCancelEdit }) {
   const ui = useUi();
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
@@ -636,7 +673,7 @@ function Composer({ id, onSent, editing, onEdited, onCancelEdit }) {
     if (!body && !editing.file) return;
     setProgress(0);
     try {
-      const r = await api.patch(`/messages/conversations/${id}/messages/${editing.id}`, { text: body });
+      const r = await api.patch(`${base}/conversations/${id}/messages/${editing.id}`, { text: body });
       onEdited(r.message);
     } catch (err) {
       ui.error(err);
@@ -668,7 +705,7 @@ function Composer({ id, onSent, editing, onEdited, onCancelEdit }) {
     if (file) fd.append("file", file);
     setProgress(0);
     try {
-      const r = await api.upload(`/messages/conversations/${id}/messages`, fd, setProgress);
+      const r = await api.upload(`${base}/conversations/${id}/messages`, fd, setProgress);
       setText("");
       setFile(null);
       onSent(r.message);
@@ -748,16 +785,17 @@ function Composer({ id, onSent, editing, onEdited, onCancelEdit }) {
   );
 }
 
-function ContactPicker({ open, onClose, onPicked }) {
+function ContactPicker({ base, groupByRole, open, onClose, onPicked }) {
   const ui = useUi();
   const [contacts, setContacts] = useState(null);
   const [q, setQ] = useState("");
+  const [role, setRole] = useState("all");
   const [busy, setBusy] = useState(null);
   useEffect(() => {
     if (!open) return;
     setQ("");
     api
-      .get("/messages/contacts")
+      .get(`${base}/contacts`)
       .then((r) => setContacts(r.contacts))
       .catch((e) => {
         ui.error(e);
@@ -768,7 +806,7 @@ function ContactPicker({ open, onClose, onPicked }) {
   const start = async (c) => {
     setBusy(c.id);
     try {
-      const r = await api.post("/messages/conversations", { userId: c.id });
+      const r = await api.post(`${base}/conversations`, { userId: c.id });
       onPicked(r.id);
     } catch (e) {
       ui.error(e);
@@ -777,15 +815,28 @@ function ContactPicker({ open, onClose, onPicked }) {
     }
   };
 
-  const shown = (contacts || []).filter((c) => c.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const shown = (contacts || []).filter((c) => (role === "all" || c.role === role) && c.name.toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <Dialog open={open} onClose={onClose} title="New message" subtitle="Choose who to write to" size="sm">
+      {groupByRole && (
+        <Segmented
+          size="sm"
+          className="mb-3"
+          value={role}
+          onChange={setRole}
+          options={[
+            { value: "all", label: "Everyone" },
+            { value: "teacher", label: "Teachers", count: (contacts || []).filter((c) => c.role === "teacher").length },
+            { value: "student", label: "Students", count: (contacts || []).filter((c) => c.role === "student").length },
+          ]}
+        />
+      )}
       <SearchInput value={q} onChange={setQ} placeholder="Search by name…" />
       <div className="mt-3">
         {!contacts ? (
           <Loading className="py-10" />
         ) : shown.length === 0 ? (
-          <Empty title={contacts.length ? "No matches" : "No one to message yet"} text={contacts.length ? "" : "You can message people you have classes with."} className="py-8" />
+          <Empty title={contacts.length ? "No matches" : "No one to message yet"} text={contacts.length ? "" : groupByRole ? "There are no active teachers or students yet." : "You can message people you have classes with."} className="py-8" />
         ) : (
           <ul className="-mx-2 space-y-0.5">
             {shown.map((c) => (
@@ -794,7 +845,7 @@ function ContactPicker({ open, onClose, onPicked }) {
                   <Avatar name={c.name} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
-                    {c.subtitle && <span className="block truncate text-xs text-muted">{c.subtitle}</span>}
+                    {(c.subtitle || groupByRole) && <span className="block truncate text-xs text-muted">{[groupByRole && ROLE_LABEL[c.role], c.subtitle].filter(Boolean).join(" · ")}</span>}
                   </span>
                   {busy === c.id && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
                 </button>

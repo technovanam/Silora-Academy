@@ -303,7 +303,9 @@ router.delete(
   })
 );
 
-// ---- Open / download link (records "opened" for students) ---------------------------
+// ---- Open / download link ------------------------------------------------------------
+// Getting a link records nothing: a student could still cancel the browser's save
+// dialog. The portal calls /opened once the file was actually shown or fully saved.
 router.post(
   "/materials/:id/link",
   ah(async (req, res) => {
@@ -312,22 +314,34 @@ router.post(
     const versionNo = Number(req.body?.version || 0);
     if (req.user.role === "student") {
       if (!(m.studentIds || []).includes(req.user.id) || !isLive(m)) fail(404, "Material not found");
-      const ref = db.collection(C.materialOpens).doc(`${m.id}_${req.user.id}`);
-      const snap = await ref.get();
-      const at = nowIso();
-      if (snap.exists) {
-        const o = snap.data();
-        await ref.update({ lastOpenedAt: at, openCount: (o.openCount || 0) + (download ? 0 : 1), downloadCount: (o.downloadCount || 0) + (download ? 1 : 0) });
-      } else {
-        await ref.set({ materialId: m.id, studentId: req.user.id, teacherId: m.teacherId, firstOpenedAt: at, lastOpenedAt: at, openCount: download ? 0 : 1, downloadCount: download ? 1 : 0 });
-        await logActivity(req, "material.opened", { targetType: "material", targetId: m.id, summary: `Opened "${m.title}"` });
-      }
     } else if (!canManage(req.user, m)) fail(404, "Material not found");
 
     let file = m.file;
     if (versionNo && req.user.role !== "student") file = (m.versions || []).find((v) => v.version === versionNo)?.file || file;
     if (!file?.path) fail(404, "File not found");
     res.json({ url: fileLink({ path: file.path, fileName: file.fileName, contentType: file.contentType, download }), contentType: file.contentType, fileName: file.fileName });
+  })
+);
+
+// ---- "Opened": the student viewed the file, or its download finished --------------------
+router.post(
+  "/materials/:id/opened",
+  requireRole("student"),
+  ah(async (req, res) => {
+    const m = await loadMaterial(req.params.id);
+    if (!(m.studentIds || []).includes(req.user.id) || !isLive(m)) fail(404, "Material not found");
+    const download = req.body?.how === "download";
+    const ref = db.collection(C.materialOpens).doc(`${m.id}_${req.user.id}`);
+    const snap = await ref.get();
+    const at = nowIso();
+    if (snap.exists) {
+      const o = snap.data();
+      await ref.update({ lastOpenedAt: at, openCount: (o.openCount || 0) + (download ? 0 : 1), downloadCount: (o.downloadCount || 0) + (download ? 1 : 0) });
+    } else {
+      await ref.set({ materialId: m.id, studentId: req.user.id, teacherId: m.teacherId, firstOpenedAt: at, lastOpenedAt: at, openCount: download ? 0 : 1, downloadCount: download ? 1 : 0 });
+      await logActivity(req, "material.opened", { targetType: "material", targetId: m.id, summary: `${download ? "Downloaded" : "Opened"} "${m.title}"` });
+    }
+    res.json({ ok: true, at });
   })
 );
 

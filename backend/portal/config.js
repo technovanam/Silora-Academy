@@ -51,6 +51,9 @@ export const config = {
   // starts once this much storage is used (the free Firebase allowance is 5 GB)
   recordingRetentionDays: num(process.env.RECORDING_RETENTION_DAYS, 30),
   recordingStorageCapGb: num(process.env.RECORDING_STORAGE_CAP_GB, 4),
+  // Each student's "My recordings" library holds up to this much; recordings that
+  // don't fit wait until the student deletes older ones
+  studentRecordingQuotaGb: num(process.env.STUDENT_RECORDING_QUOTA_GB, 1),
 
   // Email goes out through SMTP (backend/mailer.js)
   mailFrom: process.env.MAIL_FROM || process.env.PORTAL_MAIL_FROM || `Silora Academy <${process.env.MAIL_USER || "info@siloraacademy.com"}>`,

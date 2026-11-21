@@ -8,6 +8,7 @@ import {
   MoreHorizontal, Pencil, Presentation, Trash2, UploadCloud, Users, XCircle, Plus,
 } from "lucide-react";
 import { api } from "../lib/api.js";
+import { saveFile } from "../lib/download.js";
 import { fmtDate, fmtDateTime, fmtSize, fromLocalInput, fromNow, toLocalInput } from "../lib/format.js";
 import { Badge, Button, Card, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, Progress, SearchInput, Select, Table, Textarea, cx, useAsync, useUi } from "../ui/index.jsx";
 
@@ -39,23 +40,54 @@ export async function getMaterialLink(id, { download = false, version } = {}) {
   return api.post(`/materials/${id}/link`, { download, version });
 }
 
+/** Students: tell the academy the material was really opened (shown, or fully downloaded). */
+export const markMaterialOpened = (id, how) => api.post(`/materials/${id}/opened`, { how }).catch(() => {});
+
+/**
+ * Download a material and resolve true only once the file is saved
+ * (false if the save dialog was cancelled). Call straight from a click.
+ */
+export function downloadMaterial(item, { version, onProgress } = {}) {
+  return saveFile(async () => (await getMaterialLink(item.id, { download: true, version })).url, item.file?.fileName || item.title, { onProgress });
+}
+
 // ---- Preview dialog (PDF / image / video / audio inline) -----------------------------
-export function PreviewDialog({ item, onClose }) {
+// onOpened(how): called once the file was actually shown ("view") or saved ("download").
+export function PreviewDialog({ item, onClose, onOpened }) {
+  const ui = useUi();
   const [link, setLink] = useState(null);
   const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const shown = useRef(false);
   useEffect(() => {
     if (!item) return;
     setLink(null);
     setError(null);
+    shown.current = false;
     getMaterialLink(item.id, { version: item.version && item.pickVersion ? item.version : undefined })
       .then(setLink)
       .catch(setError);
   }, [item]);
   if (!item) return null;
   const t = link?.contentType || "";
+  const viewed = () => {
+    if (shown.current) return;
+    shown.current = true;
+    onOpened?.("view");
+  };
   const download = async () => {
-    const l = await getMaterialLink(item.id, { download: true, version: item.pickVersion ? item.version : undefined });
-    window.location.href = l.url;
+    setSaving(0);
+    try {
+      const saved = await downloadMaterial(item, { version: item.pickVersion ? item.version : undefined, onProgress: setSaving });
+      if (saved) {
+        onOpened?.("download");
+        ui.toast("Downloaded");
+      }
+    } catch (e) {
+      ui.error(e);
+    } finally {
+      setSaving(null);
+    }
   };
   return (
     <Dialog
@@ -67,14 +99,14 @@ export function PreviewDialog({ item, onClose }) {
       footer={
         <>
           {link && (
-            <a href={link.url} target="_blank" rel="noreferrer">
+            <a href={link.url} target="_blank" rel="noreferrer" onClick={viewed}>
               <Button variant="outline" icon={Eye}>
                 Open in new tab
               </Button>
             </a>
           )}
-          <Button icon={Download} onClick={download}>
-            Download
+          <Button icon={Download} onClick={download} loading={saving !== null}>
+            {saving ? `Downloading ${saving}%` : "Download"}
           </Button>
         </>
       }
@@ -84,17 +116,17 @@ export function PreviewDialog({ item, onClose }) {
       {link && (
         <div className="overflow-hidden rounded-2xl bg-surface">
           {t.includes("pdf") ? (
-            <iframe title={item.title} src={link.url} className="h-[65svh] w-full bg-white" />
+            <iframe title={item.title} src={link.url} onLoad={viewed} className="h-[65svh] w-full bg-white" />
           ) : t.startsWith("image/") ? (
-            <img src={link.url} alt={item.title} className="mx-auto max-h-[65svh] object-contain" />
+            <img src={link.url} alt={item.title} onLoad={viewed} className="mx-auto max-h-[65svh] object-contain" />
           ) : t.startsWith("video/") ? (
-            <video src={link.url} controls className="max-h-[65svh] w-full bg-black" />
+            <video src={link.url} controls onLoadedData={viewed} className="max-h-[65svh] w-full bg-black" />
           ) : t.startsWith("audio/") ? (
             <div className="p-8">
-              <audio src={link.url} controls className="w-full" />
+              <audio src={link.url} controls onLoadedData={viewed} className="w-full" />
             </div>
           ) : t.startsWith("text/") ? (
-            <iframe title={item.title} src={link.url} className="h-[60svh] w-full bg-white" />
+            <iframe title={item.title} src={link.url} onLoad={viewed} className="h-[60svh] w-full bg-white" />
           ) : (
             <Empty icon={File} title="Preview not available for this file type" text="Download it to open on your device." />
           )}

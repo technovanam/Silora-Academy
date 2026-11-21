@@ -6,7 +6,10 @@
 // (a resumable upload made by this API, so the browser never gets any key).
 // Everyone in the class sees a "Recording" sign while it runs.
 //
-// Watching: admins with the "recordings" permission. Recordings are deleted
+// Watching: admins with the "recordings" permission, and the students of the
+// class in their "My recordings" page (stream, download, delete from their own
+// library – the academy's copy stays). Each student's library has
+// STUDENT_RECORDING_QUOTA_GB of space. Recordings are deleted
 // automatically RECORDING_RETENTION_DAYS after the class, and a new recording
 // can't start once RECORDING_STORAGE_CAP_GB is used, so storage stays inside
 // the free Firebase allowance.
@@ -14,7 +17,7 @@
 import crypto from "crypto";
 import { Router } from "express";
 import config from "../config.js";
-import { db, C, bucket } from "../firebase.js";
+import { db, C, bucket, FieldValue } from "../firebase.js";
 import { ah, fail, nowIso, addDays, listData, getMany, str } from "../util.js";
 import { requireRole, requirePerm } from "../middleware.js";
 import { audit, logActivity } from "../services/core.js";
@@ -212,6 +215,98 @@ export async function cleanupRecordings() {
   return qs.size;
 }
 
+// ---- Students: "My recordings" ---------------------------------------------------------
+/**
+ * A student's library: ready recordings of their classes they haven't deleted.
+ * Filled oldest first up to their quota; the rest wait (no_space) until they free room.
+ */
+async function libraryOf(user) {
+  const quota = config.studentRecordingQuotaGb * GB;
+  const list = listData(await db.collection(C.recordings).where("studentIds", "array-contains", user.id).get())
+    .map(norm)
+    .filter((r) => r.status === "ready" && r.path && !(r.hiddenFor || []).includes(user.id))
+    .sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1));
+  let used = 0;
+  for (const r of list) {
+    r.fits = used + (r.size || 0) <= quota;
+    if (r.fits) used += r.size || 0;
+  }
+  return { list, used, quota };
+}
+
+async function loadOwn(req) {
+  const { list } = await libraryOf(req.user);
+  const r = list.find((x) => x.id === str(req.params.rid, 60));
+  if (!r) fail(404, "Recording not found");
+  return r;
+}
+
+/** An older recording without a playback link yet: make one. */
+async function ensureToken(r) {
+  if (r.token) return;
+  const file = bucket.file(r.path);
+  if (!(await file.exists())[0]) fail(404, "The video file of this recording is missing");
+  r.token = crypto.randomUUID();
+  await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: r.token } });
+  await db.collection(C.recordings).doc(r.id).update({ token: r.token });
+}
+
+const recName = (r) => `${String(r.title || "").replace(/[^\w\- ]+/g, "").trim() || "class"} ${String(r.startedAt).slice(0, 10)}.${/mp4/.test(r.contentType) || /\.mp4$/i.test(r.path) ? "mp4" : "webm"}`;
+
+router.use("/recordings", requireRole("student"));
+
+router.get(
+  "/recordings",
+  ah(async (req, res) => {
+    const { list, used, quota } = await libraryOf(req.user);
+    const n = await getMany(db, C.users, [...new Set(list.map((r) => r.teacherId))]);
+    res.json({
+      recordings: list
+        .map((r) => ({
+          id: r.id,
+          meetingId: r.meetingId,
+          title: r.title,
+          subject: r.subject || "",
+          teacherName: r.teacherName || n[r.teacherId]?.name || "",
+          classStartAt: r.classStartAt,
+          startedAt: r.startedAt,
+          endedAt: r.endedAt || null,
+          durationSec: r.durationSec || 0,
+          size: r.size || 0,
+          deleteAt: r.deleteAt,
+          status: r.fits ? "ready" : "no_space",
+        }))
+        .reverse(),
+      usedBytes: used,
+      quotaBytes: quota,
+      waitingBytes: list.filter((r) => !r.fits).reduce((s, r) => s + (r.size || 0), 0),
+      retentionDays: config.recordingRetentionDays,
+    });
+  })
+);
+
+router.get(
+  "/recordings/:rid/url",
+  ah(async (req, res) => {
+    const r = await loadOwn(req);
+    if (!r.fits) fail(400, "Your recordings storage is full. Delete older recordings to make room for this one.", "no_space");
+    await ensureToken(r);
+    await logActivity(req, "recording.view", { targetType: "recording", targetId: r.id, summary: `${req.query.download ? "Downloaded" : "Watched"} the recording of "${r.title}"` }).catch(() => {});
+    res.json({ url: playUrl(r), fileName: recName(r) });
+  })
+);
+
+// Removes it from this student's library only (the academy's copy is kept)
+router.delete(
+  "/recordings/:rid",
+  ah(async (req, res) => {
+    const r = await loadOwn(req);
+    await db.collection(C.recordings).doc(r.id).update({ hiddenFor: FieldValue.arrayUnion(req.user.id) });
+    await logActivity(req, "recording.remove", { targetType: "recording", targetId: r.id, summary: `Deleted the recording of "${r.title}" from their recordings` }).catch(() => {});
+    res.json({ ok: true });
+  })
+);
+
 // ---- Admin ----------------------------------------------------------------------------
 const shape = (r, n) => ({
   id: r.id,
@@ -252,19 +347,11 @@ router.get(
   "/admin/recordings/:rid/url",
   ah(async (req, res) => {
     const snap = await db.collection(C.recordings).doc(str(req.params.rid, 60)).get();
-    const r = snap.exists ? norm(snap.data()) : null;
+    const r = snap.exists ? norm({ id: snap.id, ...snap.data() }) : null;
     if (!r || r.status !== "ready" || !r.path) fail(404, "This recording isn't ready");
-    if (!r.token) {
-      // An older recording without a playback link yet: make one
-      const file = bucket.file(r.path);
-      if (!(await file.exists())[0]) fail(404, "The video file of this recording is missing");
-      r.token = crypto.randomUUID();
-      await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: r.token } });
-      await snap.ref.update({ token: r.token });
-    }
+    await ensureToken(r);
     await audit(req, "recording.view", { targetType: "recording", targetId: snap.id, summary: `Watched the recording of "${r.title}"` }).catch(() => {});
-    const ext = /mp4/.test(r.contentType) || /\.mp4$/i.test(r.path) ? "mp4" : "webm";
-    res.json({ url: playUrl(r), fileName: `${String(r.title || "").replace(/[^\w\- ]+/g, "").trim() || "class"} ${String(r.startedAt).slice(0, 10)}.${ext}` });
+    res.json({ url: playUrl(r), fileName: recName(r) });
   })
 );
 

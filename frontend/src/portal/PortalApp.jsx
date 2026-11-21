@@ -21,6 +21,7 @@ import { AdminMaterials, AdminAttendance } from "./pages/admin/AdminContent.jsx"
 import { AdminAnnouncements, AdminNotifications } from "./pages/admin/AdminComms.jsx";
 import { AdminReports, AdminSettings, AdminBackups } from "./pages/admin/AdminSystem.jsx";
 import { AdminRecordings } from "./pages/admin/AdminRecordings.jsx";
+import { StudentRecordings } from "./pages/StudentRecordings.jsx";
 import { MessagesPage, AdminMessagesPage } from "./pages/MessagesPage.jsx";
 
 // The class page loads only when someone opens a class
@@ -103,6 +104,7 @@ export default function PortalApp() {
             <Route path="student" element={S(<StudentDashboard />)} />
             <Route path="student/classes" element={S(<StudentClasses />)} />
             <Route path="student/materials" element={S(<StudentMaterials />)} />
+            <Route path="student/recordings" element={S(<StudentRecordings />)} />
             <Route path="student/attendance" element={S(<StudentAttendance />)} />
             <Route path="student/progress" element={S(<StudentProgress />)} />
 

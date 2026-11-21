@@ -6,7 +6,7 @@ import { useAuth } from "../lib/auth.jsx";
 import { fmtDate, fmtDateTime, fmtDay, fmtSize, fmtTime, fmtWeek, fromNow } from "../lib/format.js";
 import { Badge, Button, Card, CardTitle, Empty, ErrorBox, Field, Loading, Notice, PageHeader, Progress, SearchInput, Segmented, Select, StatCard, Textarea, Input, cx, useAsync, useUi } from "../ui/index.jsx";
 import { ClassRow, JoinButton, classState, useNow } from "../components/classes.jsx";
-import { FileIcon, PreviewDialog, getMaterialLink } from "../components/materials.jsx";
+import { FileIcon, PreviewDialog, downloadMaterial, markMaterialOpened } from "../components/materials.jsx";
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -213,18 +213,26 @@ export function StudentMaterials() {
   const subjects = [...new Set(all.map((m) => m.subject).filter(Boolean))];
   const list = all.filter((m) => (tab === "new" ? !m.opened : tab === "fav" ? m.favourite : true) && (!subject || m.subject === subject) && (!q || `${m.title} ${m.subject} ${m.folder} ${m.teacherName}`.toLowerCase().includes(q.toLowerCase())));
 
-  const markOpened = (id) => setData((d) => ({ ...d, materials: d.materials.map((m) => (m.id === id ? { ...m, opened: true, isNew: false, lastOpenedAt: new Date().toISOString(), firstOpenedAt: m.firstOpenedAt || new Date().toISOString() } : m)) }));
-  const open = (m) => {
-    setPreview(m);
-    markOpened(m.id);
+  const [saving, setSaving] = useState({}); // material id → download progress
+  // "Opened" only once the file was really shown or fully saved – not on the button click
+  const markOpened = (id, how) => {
+    markMaterialOpened(id, how);
+    setData((d) => ({ ...d, materials: d.materials.map((m) => (m.id === id ? { ...m, opened: true, isNew: false, lastOpenedAt: new Date().toISOString(), firstOpenedAt: m.firstOpenedAt || new Date().toISOString() } : m)) }));
   };
+  const open = (m) => setPreview(m);
   const download = async (m) => {
+    if (saving[m.id] !== undefined) return;
+    setSaving((s) => ({ ...s, [m.id]: 0 }));
     try {
-      const l = await getMaterialLink(m.id, { download: true });
-      markOpened(m.id);
-      window.location.href = l.url;
+      const saved = await downloadMaterial(m, { onProgress: (p) => setSaving((s) => ({ ...s, [m.id]: p })) });
+      if (saved) {
+        markOpened(m.id, "download");
+        ui.toast("Downloaded");
+      }
     } catch (e) {
       ui.error(e);
+    } finally {
+      setSaving(({ [m.id]: _, ...rest }) => rest);
     }
   };
   const fav = async (m) => {
@@ -294,15 +302,15 @@ export function StudentMaterials() {
                 <Button size="sm" icon={Eye} className="flex-1" onClick={() => open(m)}>
                   Open
                 </Button>
-                <Button size="sm" variant="outline" icon={Download} onClick={() => download(m)}>
-                  Download
+                <Button size="sm" variant="outline" icon={Download} loading={saving[m.id] !== undefined} onClick={() => download(m)}>
+                  {saving[m.id] ? `${saving[m.id]}%` : "Download"}
                 </Button>
               </div>
             </Card>
           ))}
         </div>
       )}
-      <PreviewDialog item={preview} onClose={() => setPreview(null)} />
+      <PreviewDialog item={preview} onClose={() => setPreview(null)} onOpened={(how) => preview && markOpened(preview.id, how)} />
     </>
   );
 }

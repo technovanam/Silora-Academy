@@ -62,6 +62,7 @@ export function navFor(user) {
       { to: "/portal/student", label: "Dashboard", icon: LayoutDashboard, end: true },
       { to: "/portal/student/classes", label: "My classes", icon: CalendarDays },
       { to: "/portal/student/materials", label: "Materials", icon: FolderOpen },
+      { to: "/portal/student/recordings", label: "Recordings", icon: Video },
       { to: "/portal/student/attendance", label: "Weekly attendance", icon: ClipboardCheck },
       { to: "/portal/student/progress", label: "Progress", icon: TrendingUp },
       { to: "/portal/messages", label: "Messages", icon: MessagesSquare, badge: "messages" },
@@ -90,7 +91,7 @@ export function navFor(user) {
     { to: "/portal/admin/attendance", label: "Attendance", icon: ClipboardCheck, perm: "attendance" },
     { to: "/portal/admin/recordings", label: "Recordings", icon: Video, perm: "recordings" },
     { section: "Communication" },
-    { to: "/portal/admin/messages", label: "Messages", icon: MessagesSquare, perm: "messages" },
+    { to: "/portal/admin/messages", label: "Messages", icon: MessagesSquare, perm: "messages", badge: "messages" },
     { to: "/portal/admin/announcements", label: "Announcements", icon: Megaphone, perm: "announcements" },
     { to: "/portal/admin/notifications", label: "Notification log", icon: BellRing, perm: "notifications" },
     { section: "Monitoring" },
@@ -104,14 +105,16 @@ export function navFor(user) {
   return visible.filter((i, idx) => !i.section || (visible[idx + 1] && !visible[idx + 1].section));
 }
 
-// Unread chat messages (teachers and students), refreshed every 30 s and when a chat is read
+// Unread chat messages (teachers and students; admins: their direct messages),
+// refreshed every 30 s and when a chat is read
 export function useUnreadMessages(user) {
   const [n, setN] = useState(0);
-  const enabled = user?.role === "teacher" || user?.role === "student";
+  const admin = user?.role === "admin";
+  const enabled = user?.role === "teacher" || user?.role === "student" || (admin && can(user, "messages"));
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    const load = () => api.get("/messages/unread").then((r) => alive && setN(r.unread || 0)).catch(() => {});
+    const load = () => api.get(admin ? "/admin/dm/unread" : "/messages/unread").then((r) => alive && setN(r.unread || 0)).catch(() => {});
     load();
     const t = setInterval(load, 30000);
     window.addEventListener("portal:messages-read", load);
@@ -120,7 +123,7 @@ export function useUnreadMessages(user) {
       clearInterval(t);
       window.removeEventListener("portal:messages-read", load);
     };
-  }, [enabled]);
+  }, [enabled, admin]);
   return enabled ? n : 0;
 }
 
