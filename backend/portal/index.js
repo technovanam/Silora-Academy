@@ -11,6 +11,7 @@ import admin from "./routes/admin.js";
 import dashboard from "./routes/dashboard.js";
 import meetings from "./routes/meetings.js";
 import live from "./routes/live.js";
+import recordings from "./routes/recordings.js";
 import materials, { filesRouter } from "./routes/materials.js";
 import progress from "./routes/progress.js";
 import attendance from "./routes/attendance.js";
@@ -38,6 +39,7 @@ export function mountPortal(app) {
   api.use(dashboard);
   api.use(meetings);
   api.use(live);
+  api.use(recordings);
   api.use(materials);
   api.use(progress);
   api.use(attendance);

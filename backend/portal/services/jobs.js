@@ -20,6 +20,7 @@ import { publishMaterial } from "../routes/materials.js";
 import { deliverAnnouncement } from "../routes/notifications.js";
 import { cleanupMessageFiles } from "../routes/messages.js";
 import { closeForgottenRooms } from "../routes/live.js";
+import { cleanupRecordings, finishAbandonedRecordings } from "../routes/recordings.js";
 import { purgeUser } from "../routes/adminUsers.js";
 
 const fmtTime = (iso) => new Intl.DateTimeFormat("en-IN", { timeZone: config.timezone, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
@@ -137,6 +138,8 @@ function localParts(d = new Date()) {
 const hourlyCleanup = async () => {
   await cleanupMessageFiles();
   await closeForgottenRooms();
+  await finishAbandonedRecordings();
+  await cleanupRecordings();
 };
 
 // For Cloud Scheduler (functions in scripts/build-api.mjs). Only two scheduler jobs, so
@@ -166,7 +169,8 @@ export function startJobs() {
   cron.schedule("* * * * *", guarded("minute", async () => { await sendClassReminders(); await publishScheduled(); }), tz);
   cron.schedule("*/5 * * * *", guarded("retry", retryFailed), tz);
   cron.schedule("23 * * * *", guarded("message-files", cleanupMessageFiles), tz);
-  cron.schedule("*/10 * * * *", guarded("live-rooms", closeForgottenRooms), tz);
+  cron.schedule("*/10 * * * *", guarded("live-rooms", async () => { await closeForgottenRooms(); await finishAbandonedRecordings(); }), tz);
+  cron.schedule("41 * * * *", guarded("recordings", cleanupRecordings), tz);
   cron.schedule("0 2 * * *", guarded("nightly", async () => { await createBackup("Automatic daily backup"); await retentionCleanup(); }), tz);
   cron.schedule("0 9 * * *", guarded("alerts", sendInactivityAlerts), tz);
   cron.schedule("0 10 * * 6", guarded("attendance-sat", sendAttendanceReminders), tz);

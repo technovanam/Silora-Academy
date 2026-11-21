@@ -281,14 +281,15 @@ export function Checkbox({ checked, onChange, label, className }) {
 /** Segmented options (radio chips). */
 export function Segmented({ value, onChange, options, className, size = "md" }) {
   return (
-    <div className={cx("inline-flex max-w-full flex-wrap gap-1 rounded-xl bg-slate-100 p-1", className)}>
+    // One row that scrolls sideways on small screens (never wraps into a lopsided second line)
+    <div className={cx("scrollbar-none inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1", className)}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
           className={cx(
-            "inline-flex items-center gap-1.5 rounded-lg font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+            "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
             size === "sm" ? "px-3 py-1.5 text-xs" : "px-3.5 py-2 text-sm",
             value === o.value ? "bg-white text-navy shadow-sm" : "text-slate-500 hover:text-navy"
           )}

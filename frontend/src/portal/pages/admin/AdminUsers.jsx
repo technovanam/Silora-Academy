@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useAuth, can } from "../../lib/auth.jsx";
-import { fmtDate, fmtDateTime, fromNow } from "../../lib/format.js";
+import { fmtDate, fmtDateTime, fmtGrade, fmtLastSeen, fmtName, fmtPhone } from "../../lib/format.js";
 import {
   Avatar, Badge, Button, Card, CardTitle, Checkbox, Dialog, Empty, ErrorBox, Field, Input, Loading, Notice, PageHeader, SearchInput, Segmented, Select, StatCard, Table, Toggle, useAsync, useUi,
 } from "../../ui/index.jsx";
@@ -247,20 +247,25 @@ export function AdminUsersPage({ role }) {
       label: "Name",
       render: (u) => (
         <span className="flex items-center gap-3">
-          <Avatar name={u.name} size="sm" />
+          {role !== "teacher" && <Avatar name={u.name} size="sm" />}
           <span className="min-w-0">
-            <span className="block font-semibold text-navy">{u.name}</span>
-            {contacts && <span className="block text-xs text-muted">{u.contact?.email}</span>}
+            <span className="block font-semibold text-navy">{fmtName(u.name)}</span>
+            {contacts && <span className="block text-xs text-muted">{u.contact?.email?.toLowerCase()}</span>}
           </span>
         </span>
       ),
     },
-    role === "student" && { key: "grade", label: "Grade / board", render: (u) => [u.grade, u.board].filter(Boolean).join(" · ") || "—" },
-    role === "student" && { key: "teacherName", label: "Teacher", render: (u) => (u.teacherName ? u.teacherName : <Badge tone="amber">Unassigned</Badge>) },
+    role === "student" && { key: "grade", label: "Grade / board", render: (u) => [fmtGrade(u.grade), u.board].filter(Boolean).join(" · ") || "—", className: "whitespace-nowrap" },
+    role === "student" && { key: "teacherName", label: "Teacher", render: (u) => (u.teacherName ? fmtName(u.teacherName) : <Badge tone="amber">Unassigned</Badge>) },
     role === "teacher" && { key: "subjects", label: "Subjects", render: (u) => (u.subjects || []).join(", ") || "—" },
     role === "teacher" && { key: "studentCount", label: "Students", render: (u) => u.studentCount },
-    contacts && { key: "phone", label: "Phone", render: (u) => u.contact?.phone || "—" },
-    { key: "lastLoginAt", label: "Last sign-in", render: (u) => (u.lastLoginAt ? fromNow(u.lastLoginAt) : <span className="text-slate-400">Never</span>) },
+    contacts && { key: "phone", label: "Phone", render: (u) => fmtPhone(u.contact?.phone) || "—", className: "whitespace-nowrap tabular-nums" },
+    {
+      key: "lastLoginAt",
+      label: "Last sign-in",
+      className: "whitespace-nowrap",
+      render: (u) => (u.lastLoginAt ? <span title={fmtDateTime(u.lastLoginAt)}>{fmtLastSeen(u.lastLoginAt)}</span> : <span className="text-slate-400">Never</span>),
+    },
     {
       key: "status",
       label: "Status",
@@ -554,6 +559,7 @@ export function AdminAdminsPage() {
   const { user: me } = useAuth();
   const { data, loading, error, reload } = useAsync(() => api.get("/admin/permissions"), []);
   const [edit, setEdit] = useState(null);
+  const [viewing, setViewing] = useState(null);
   const [adding, setAdding] = useState(false);
   const save = async () => {
     try {
@@ -568,17 +574,38 @@ export function AdminAdminsPage() {
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   const keys = Object.keys(data.catalog);
+  const PREVIEW = 3; // the table shows a few; the full list opens on click
+  const granted = (a) => keys.filter((k) => a.permissions[k]);
+  const label = (k) => data.catalog[k] || k;
   return (
     <>
       <PageHeader title="Admins & access" subtitle="Give each admin only the permissions they need. Only super admins can change this." actions={<Button icon={Plus} onClick={() => setAdding(true)}>Add admin</Button>} />
       <Card flush>
         <Table
           rows={data.admins}
-          onRowClick={(a) => navigate(`/portal/admin/users/${a.id}`)}
+          onRowClick={(a) => setViewing(a)}
           columns={[
-            { key: "name", label: "Admin", render: (a) => <span className="flex items-center gap-3"><Avatar name={a.name} size="sm" /><span className="font-semibold text-navy">{a.name}</span>{a.id === me.id && <Badge>You</Badge>}</span> },
-            { key: "role", label: "Access", render: (a) => (a.superAdmin ? <Badge tone="gold">Super admin</Badge> : <span className="text-sm text-muted">{keys.filter((k) => a.permissions[k]).length} of {keys.length} permissions</span>) },
-            { key: "perms", label: "Permissions", render: (a) => (a.superAdmin ? "All" : <span className="flex flex-wrap gap-1">{keys.filter((k) => a.permissions[k]).map((k) => <Badge key={k}>{k}</Badge>)}</span>) },
+            { key: "name", label: "Admin", render: (a) => <span className="flex items-center gap-3"><Avatar name={a.name} size="sm" /><span className="whitespace-nowrap font-semibold text-navy">{fmtName(a.name)}</span>{a.id === me.id && <Badge>You</Badge>}</span> },
+            { key: "role", label: "Access", className: "whitespace-nowrap", render: (a) => (a.superAdmin ? <Badge tone="gold">Super admin</Badge> : <span className="text-sm text-muted">{granted(a).length} of {keys.length} permissions</span>) },
+            {
+              key: "perms",
+              label: "Permissions",
+              render: (a) => {
+                if (a.superAdmin) return <span className="text-sm text-muted">All permissions</span>;
+                const g = granted(a);
+                if (!g.length) return <span className="text-sm text-slate-400">None</span>;
+                return (
+                  <span className="flex flex-wrap items-center gap-1">
+                    {g.slice(0, PREVIEW).map((k) => <Badge key={k}>{k}</Badge>)}
+                    {g.length > PREVIEW && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setViewing(a); }} className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-navy hover:bg-slate-100">
+                        +{g.length - PREVIEW} more
+                      </button>
+                    )}
+                  </span>
+                );
+              },
+            },
             { key: "status", label: "Status", render: (a) => (a.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>) },
             { key: "edit", label: "", render: (a) => <Button size="xs" variant="outline" onClick={(e) => { e.stopPropagation(); setEdit({ ...a, permissions: { ...a.permissions } }); }}>Edit access</Button> },
           ]}
@@ -607,6 +634,35 @@ export function AdminAdminsPage() {
               </div>
             )}
           </div>
+        )}
+      </Dialog>
+      {/* Full access details (opened from a row or "+N more") */}
+      <Dialog
+        open={!!viewing}
+        onClose={() => setViewing(null)}
+        title={viewing ? fmtName(viewing.name) : ""}
+        subtitle={viewing ? (viewing.superAdmin ? "Super admin · full access" : `${granted(viewing).length} of ${keys.length} permissions`) : ""}
+        footer={
+          viewing && (
+            <>
+              <Button variant="outline" onClick={() => navigate(`/portal/admin/users/${viewing.id}`)}>Open profile</Button>
+              <Button onClick={() => { setEdit({ ...viewing, permissions: { ...viewing.permissions } }); setViewing(null); }}>Edit access</Button>
+            </>
+          )
+        }
+      >
+        {viewing && (
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {keys.map((k) => {
+              const on = viewing.superAdmin || !!viewing.permissions[k];
+              return (
+                <li key={k} className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${on ? "bg-emerald-50 text-emerald-800" : "bg-slate-50 text-slate-400"}`}>
+                  {on ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <Lock className="h-4 w-4 shrink-0" />}
+                  {label(k)}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Dialog>
       <UserFormDialog open={adding} onClose={() => setAdding(false)} role="admin" catalog={data.catalog} onSaved={() => reload(true)} />

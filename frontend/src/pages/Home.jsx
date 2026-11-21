@@ -249,7 +249,8 @@ const Home = () => {
       <section id="portal" className="relative isolate scroll-mt-16 overflow-hidden bg-navy py-16 sm:py-20 lg:py-28">
         <div aria-hidden="true" className="absolute -right-40 -top-40 -z-10 h-[32rem] w-[32rem] rounded-full bg-brand/20 blur-[130px]" />
         <div aria-hidden="true" className="absolute -bottom-40 -left-40 -z-10 h-[28rem] w-[28rem] rounded-full bg-sky-400/10 blur-[120px]" />
-        <Container className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+        {/* grid-cols-1 (= minmax(0,1fr)) stops the nowrap preview text from stretching the column past the phone screen */}
+        <Container className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2 lg:gap-16">
           <Reveal>
             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white ring-1 ring-white/15">
               <span className="h-1.5 w-1.5 rounded-full bg-brand" /> Silora learning portal

@@ -4,7 +4,7 @@
 import { Router } from "express";
 import config from "../config.js";
 import { auth, db, C } from "../firebase.js";
-import { ah, fail, nowIso, isEmail, str, tempPassword, listData, addDays, weekStartOf, shiftWeek } from "../util.js";
+import { ah, fail, nowIso, isEmail, str, normName, normGrade, normPhone, tempPassword, listData, addDays, weekStartOf, shiftWeek } from "../util.js";
 import { requirePerm, requireSuperAdmin } from "../middleware.js";
 import { adminView, audit, getUser, hasPerm, ADMIN_PERMISSIONS, usersByRole } from "../services/core.js";
 import { notify } from "../services/notify.js";
@@ -22,9 +22,9 @@ const cleanList = (v, max = 20) =>
     .slice(0, max);
 
 function profileFields(body, role) {
-  const out = { name: str(body.name, 120) };
+  const out = { name: normName(str(body.name, 120)) };
   if (role === "student") {
-    out.grade = str(body.grade, 40);
+    out.grade = normGrade(str(body.grade, 40));
     out.board = str(body.board, 60);
     out.subjects = cleanList(body.subjects);
   }
@@ -34,9 +34,9 @@ function profileFields(body, role) {
 function contactFields(body) {
   return {
     email: str(body.email, 200).toLowerCase(),
-    phone: str(body.phone, 40),
-    parentName: str(body.parentName, 120),
-    parentPhone: str(body.parentPhone, 40),
+    phone: normPhone(str(body.phone, 40)),
+    parentName: normName(str(body.parentName, 120)),
+    parentPhone: normPhone(str(body.parentPhone, 40)),
     address: str(body.address, 300),
   };
 }

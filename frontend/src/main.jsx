@@ -4,16 +4,17 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import App from './App.jsx';
+import { lazyPage } from './lazyPage.js';
 import Home from './pages/Home.jsx';
 import Maintenance from './pages/Maintenance.jsx';
 import { MAINTENANCE_MODE, MAINTENANCE_PREVIEW_SECRET } from './config.js';
 // Lazy load other pages
-const About = React.lazy(() => import('./pages/About.jsx'));
-const Services = React.lazy(() => import('./pages/Services.jsx'));
-const Contact = React.lazy(() => import('./pages/Contact.jsx'));
-const BookDemo = React.lazy(() => import('./pages/BookDemo.jsx'));
-const JoinTutor = React.lazy(() => import('./pages/JoinTutor.jsx'));
-const PortalApp = React.lazy(() => import('./portal/PortalApp.jsx'));
+const About = lazyPage(() => import('./pages/About.jsx'));
+const Services = lazyPage(() => import('./pages/Services.jsx'));
+const Contact = lazyPage(() => import('./pages/Contact.jsx'));
+const BookDemo = lazyPage(() => import('./pages/BookDemo.jsx'));
+const JoinTutor = lazyPage(() => import('./pages/JoinTutor.jsx'));
+const PortalApp = lazyPage(() => import('./portal/PortalApp.jsx'));
 import './index.css';
 
 // ============================================================

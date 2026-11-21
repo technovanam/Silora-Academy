@@ -4,9 +4,13 @@
 // Video and sound go straight between browsers (WebRTC). Each student
 // connects only to the teacher (the "host"):
 //   • the teacher's camera, microphone and shared screen go to every student
-//   • a student's microphone / camera is sent only after the teacher lets them
-//     speak; the teacher's browser then passes it on to the rest of the class
+//   • a student's microphone is sent only after the teacher lets them speak;
+//     the teacher's browser then passes it on to the rest of the class
 //     (at most two speakers at a time)
+//   • a student's camera goes only to the teacher (like a classroom: the
+//     teacher sees everyone, students see the teacher and the speakers)
+//   • a small data link on the same connection carries the whiteboard and
+//     reactions, so they cost nothing in Firestore
 // Browsers swap their connection details through Firestore (liveRooms/*).
 // Google's free public address helper (STUN) lets browsers on different
 // networks find each other; no video or sound passes through it.
@@ -52,7 +56,9 @@ export function liveDb() {
   }));
 }
 
-export const canShareScreen = () => !!navigator.mediaDevices?.getDisplayMedia && !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+export const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+export const canShareScreen = () => !!navigator.mediaDevices?.getDisplayMedia && !isMobile();
+export const canRecord = () => typeof MediaRecorder !== "undefined" && !!HTMLCanvasElement.prototype.captureStream && !isMobile();
 
 export function mediaErrorText(e) {
   const n = e?.name || "";
@@ -62,12 +68,48 @@ export function mediaErrorText(e) {
   return "Couldn't start the camera or microphone.";
 }
 
-export const getMic = () =>
-  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then((s) => s.getAudioTracks()[0]);
-export const getCam = (small) =>
-  navigator.mediaDevices
-    .getUserMedia({ video: small ? { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } } : { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 24 } } })
-    .then((s) => s.getVideoTracks()[0]);
+// ---- Devices (chosen in Settings, remembered on this device) ----
+const DEV_KEY = "silora.live.devices";
+export function savedDevices() {
+  try {
+    return JSON.parse(localStorage.getItem(DEV_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+export function saveDevice(kind, id) {
+  try {
+    localStorage.setItem(DEV_KEY, JSON.stringify({ ...savedDevices(), [kind]: id || "" }));
+  } catch {
+    /* private mode */
+  }
+}
+export async function listDevices() {
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const name = { audioinput: "Microphone", videoinput: "Camera", audiooutput: "Speaker" };
+  const pick = (k) => all.filter((d) => d.kind === k && d.deviceId).map((d, i) => ({ id: d.deviceId, label: d.label || `${name[k]} ${i + 1}` }));
+  return { mics: pick("audioinput"), cams: pick("videoinput"), speakers: pick("audiooutput") };
+}
+
+const want = (id) => (id ? { deviceId: { exact: id } } : {});
+async function withFallback(make, id) {
+  try {
+    return await make(id);
+  } catch (e) {
+    // A remembered device that was unplugged → use the default one
+    if (id && (e?.name === "OverconstrainedError" || e?.name === "NotFoundError")) return make(null);
+    throw e;
+  }
+}
+export const getMic = (id = savedDevices().mic) =>
+  withFallback(
+    (d) => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, ...want(d) } }).then((s) => s.getAudioTracks()[0]),
+    id
+  );
+const CAM_BIG = { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 24 } };
+const CAM_SMALL = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } };
+export const getCam = (small, id = savedDevices().cam) =>
+  withFallback((d) => navigator.mediaDevices.getUserMedia({ video: { ...(small ? CAM_SMALL : CAM_BIG), ...want(d) } }).then((s) => s.getVideoTracks()[0]), id);
 
 // Send the connection details in one go (all network addresses gathered first)
 function waitIce(pc, ms = 3500) {
@@ -98,14 +140,44 @@ async function setBitrate(sender, kbps) {
 const desc = (d) => ({ type: d.type, sdp: d.sdp });
 const streamOf = (track) => new MediaStream(track ? [track] : []);
 
+// Messages on the data link are small JSON objects; anything bigger is dropped
+const MAX_MSG = 60000;
+function sendOn(dc, msg) {
+  if (!dc || dc.readyState !== "open") return false;
+  const text = typeof msg === "string" ? msg : JSON.stringify(msg);
+  if (text.length > MAX_MSG) return false;
+  try {
+    dc.send(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+const parse = (e) => {
+  try {
+    return JSON.parse(e.data);
+  } catch {
+    return null;
+  }
+};
+
 class Emitter {
   constructor(onChange) {
     this.onChange = onChange;
     this.version = 0;
+    this.listeners = new Set();
   }
   emit() {
     this.version++;
     this.onChange?.(this.version);
+  }
+  /** Listen to messages on the data link (whiteboard, reactions). */
+  onData(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  deliver(msg, from) {
+    this.listeners.forEach((fn) => fn(msg, from));
   }
 }
 
@@ -116,7 +188,7 @@ export class HostEngine extends Emitter {
   constructor({ db, fs, mid, uid, onChange, onError }) {
     super(onChange);
     Object.assign(this, { db, fs, mid, uid, onError });
-    this.peers = new Map(); // studentId → { pc, tr, gen, state, attempts, audio, video }
+    this.peers = new Map(); // studentId → { pc, tr, dc, gen, state, attempts, audio, video }
     this.people = [];
     this.room = null;
     this.speakers = [null, null];
@@ -127,10 +199,30 @@ export class HostEngine extends Emitter {
     this.camOn = false;
     this.unsubs = [];
     this.closed = false;
+    this.peerOpenFns = new Set();
   }
 
   ref(...path) {
     return this.fs.doc(this.db, "liveRooms", this.mid, ...path);
+  }
+
+  /** Send to every student (except one, e.g. the one who sent it). */
+  broadcast(msg, except) {
+    const text = JSON.stringify(msg);
+    this.peers.forEach((p) => p.id !== except && sendOn(p.dc, text));
+  }
+  sendTo(id, msg) {
+    return sendOn(this.peers.get(id)?.dc, msg);
+  }
+  /** Called when a student's data link opens (to send them the current whiteboard). */
+  onPeerOpen(fn) {
+    this.peerOpenFns.add(fn);
+    return () => this.peerOpenFns.delete(fn);
+  }
+
+  /** Class options everyone sees (whiteboard open, students may draw, chat on). */
+  setRoom(fields) {
+    return this.fs.updateDoc(this.ref(), fields);
   }
 
   /** Start with the camera / microphone chosen on the pre-join screen. */
@@ -201,10 +293,12 @@ export class HostEngine extends Emitter {
       pc.addTransceiver("audio", { direction: "sendonly" }), // speaker 2
       pc.addTransceiver("video", { direction: "sendonly" }),
     ];
+    const dc = pc.createDataChannel("class", { ordered: true });
     const peer = {
       id,
       pc,
       tr,
+      dc,
       gen: Date.now(),
       state: "connecting",
       attempts: old?.attempts || 0,
@@ -214,6 +308,11 @@ export class HostEngine extends Emitter {
     };
     this.peers.set(id, peer);
     pc.onconnectionstatechange = () => this.onPeerState(peer);
+    dc.onopen = () => this.peerOpenFns.forEach((fn) => fn(id));
+    dc.onmessage = (e) => {
+      const msg = parse(e);
+      if (msg && this.peers.get(id) === peer) this.deliver(msg, id);
+    };
     this.applyTracks(peer);
     // Anyone passing this student on to the class needs the new tracks
     if (this.speakers.includes(id)) this.peers.forEach((p) => p !== peer && this.applyTracks(p));
@@ -334,6 +433,23 @@ export class HostEngine extends Emitter {
     this.emit();
   }
 
+  /** Switch to another microphone / camera (Settings). */
+  async switchDevice(kind, id) {
+    saveDevice(kind, id);
+    if (kind === "mic" && this.mic) {
+      const next = await getMic(id);
+      next.enabled = this.micOn;
+      this.mic.stop();
+      this.mic = next;
+    } else if (kind === "cam" && this.cam) {
+      const next = await getCam(false, id);
+      this.cam.stop();
+      this.cam = next;
+    }
+    this.peers.forEach((p) => this.applyTracks(p));
+    this.emit();
+  }
+
   async setScreen(on) {
     if (on && !this.screen) {
       const s = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 }, width: { max: 1280 }, height: { max: 720 } }, audio: false });
@@ -374,6 +490,17 @@ export class HostEngine extends Emitter {
     return this.fs.updateDoc(this.ref("people", id), { hand: false });
   }
 
+  async lowerAllHands() {
+    await Promise.all(this.people.filter((p) => p.hand && p.status === "in").map((p) => this.lowerHand(p.id).catch(() => {})));
+  }
+
+  /** Stop every student from speaking. */
+  async muteAll() {
+    const list = this.people.filter((p) => p.canSpeak && p.id !== this.uid && p.role === "student");
+    await Promise.all(list.map((p) => this.fs.updateDoc(this.ref("people", p.id), { canSpeak: false, canVideo: false }).catch(() => {})));
+    await this.setSpeakers(this.speakers.map(() => null));
+  }
+
   async setSpeakers(list) {
     this.speakers = list;
     this.peers.forEach((p) => this.applyTracks(p));
@@ -403,8 +530,10 @@ export class ParticipantEngine extends Emitter {
     Object.assign(this, { db, fs, mid, uid, onError });
     this.room = null;
     this.me = null;
+    this.people = [];
     this.pc = null;
     this.tr = null;
+    this.dc = null;
     this.gen = 0;
     this.lastSig = null;
     this.state = "waiting"; // waiting | connecting | connected | reconnecting | blocked
@@ -417,6 +546,7 @@ export class ParticipantEngine extends Emitter {
     this.mediaError = null;
     this.unsubs = [];
     this.sigUnsub = null;
+    this.peopleUnsub = null;
     this.closed = false;
   }
 
@@ -424,7 +554,17 @@ export class ParticipantEngine extends Emitter {
     return this.fs.doc(this.db, "liveRooms", this.mid, ...path);
   }
 
-  start() {
+  /** Send to the teacher's browser (it passes it on to the class). */
+  send(msg) {
+    return sendOn(this.dc, msg);
+  }
+
+  /** Start; a camera turned on before joining keeps going. */
+  start({ cam } = {}) {
+    if (cam) {
+      this.cam = cam;
+      this.camOn = true;
+    }
     this.unsubs.push(
       this.fs.onSnapshot(
         this.ref("people", this.uid),
@@ -449,14 +589,36 @@ export class ParticipantEngine extends Emitter {
     );
   }
 
+  // Who else is in the class (readable once we're let in)
+  watchPeople() {
+    if (this.closed) return;
+    if (this.inClass() && !this.peopleUnsub) {
+      this.peopleUnsub = this.fs.onSnapshot(
+        this.fs.collection(this.db, "liveRooms", this.mid, "people"),
+        (qs) => {
+          this.people = qs.docs.map((d) => ({ id: d.id, ...d.data() }));
+          this.emit();
+        },
+        () => {
+          // Rules can briefly lag behind being let in – try again
+          this.peopleUnsub = null;
+          setTimeout(() => this.watchPeople(), 2000);
+        }
+      );
+    } else if (!this.inClass() && this.peopleUnsub) {
+      this.peopleUnsub();
+      this.peopleUnsub = null;
+      this.people = [];
+    }
+  }
+
   onMe(me) {
     const prev = this.me;
     this.me = me;
-    // Permission to speak just given → switch the mic on (and camera if allowed)
+    // Permission to speak just given → switch the mic on (and camera if asked)
     if (me?.canSpeak && !prev?.canSpeak) this.micOn = true;
     if (me?.canVideo && !prev?.canVideo) this.camOn = true;
     if (!me?.canSpeak) this.micOn = false;
-    if (!me?.canVideo) this.camOn = false;
     this.watchSignals();
     this.applySend();
     this.emit();
@@ -468,6 +630,7 @@ export class ParticipantEngine extends Emitter {
 
   watchSignals() {
     if (this.closed) return;
+    this.watchPeople();
     if (this.inClass() && !this.sigUnsub) {
       if (this.state === "waiting") this.state = "connecting";
       this.sigUnsub = this.fs.onSnapshot(
@@ -486,6 +649,7 @@ export class ParticipantEngine extends Emitter {
       this.sigUnsub = null;
       this.pc?.close();
       this.pc = null;
+      this.dc = null;
       this.streams = null;
       this.state = "waiting";
     }
@@ -496,10 +660,25 @@ export class ParticipantEngine extends Emitter {
     if (!d?.offer || d.gen <= this.gen) return;
     this.gen = d.gen;
     this.pc?.close();
+    this.dc = null;
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.pc = pc;
     this.state = this.state === "connected" ? "reconnecting" : "connecting";
     pc.onconnectionstatechange = () => this.onState(pc);
+    pc.ondatachannel = (e) => {
+      if (this.pc !== pc) return;
+      const dc = e.channel;
+      const open = () => {
+        this.dc = dc;
+        this.deliver({ t: "link-open" });
+      };
+      if (dc.readyState === "open") open();
+      else dc.onopen = open;
+      dc.onmessage = (ev) => {
+        const msg = parse(ev);
+        if (msg && this.pc === pc) this.deliver(msg);
+      };
+    };
     try {
       await pc.setRemoteDescription(d.offer);
       const tr = pc.getTransceivers();
@@ -561,7 +740,7 @@ export class ParticipantEngine extends Emitter {
     this.requestOffer();
   }
 
-  // Send our mic / camera only while the teacher allows it
+  // The mic is sent only while the teacher allows it; the camera whenever it's on
   async applySend() {
     const me = this.me || {};
     this.mediaError = null;
@@ -577,19 +756,19 @@ export class ParticipantEngine extends Emitter {
     }
     if (this.mic) this.mic.enabled = this.micOn;
     try {
-      if (me.canVideo && this.camOn && !this.cam) this.cam = await getCam(true);
+      if (this.camOn && !this.cam) this.cam = await getCam(true);
     } catch (e) {
       this.mediaError = mediaErrorText(e);
       this.camOn = false;
     }
-    if ((!me.canVideo || !this.camOn) && this.cam) {
+    if (!this.camOn && this.cam) {
       this.cam.stop();
       this.cam = null;
     }
     if (this.tr) {
       await this.tr[T.AUDIO].sender.replaceTrack(this.mic).catch(() => {});
       await this.tr[T.VIDEO].sender.replaceTrack(this.cam).catch(() => {});
-      setBitrate(this.tr[T.VIDEO].sender, 250);
+      setBitrate(this.tr[T.VIDEO].sender, 200);
     }
     if (me.status === "in" && (me.micOn !== this.micOn || me.camOn !== !!this.cam)) {
       this.fs.updateDoc(this.ref("people", this.uid), { micOn: this.micOn, camOn: !!this.cam }).catch(() => {});
@@ -602,7 +781,18 @@ export class ParticipantEngine extends Emitter {
     await this.applySend();
   }
   async setCam(on) {
-    this.camOn = on && !!this.me?.canVideo;
+    this.camOn = on;
+    await this.applySend();
+  }
+  async switchDevice(kind, id) {
+    saveDevice(kind, id);
+    if (kind === "mic" && this.mic) {
+      this.mic.stop();
+      this.mic = null;
+    } else if (kind === "cam" && this.cam) {
+      this.cam.stop();
+      this.cam = null;
+    }
     await this.applySend();
   }
   raiseHand(on) {
@@ -616,6 +806,7 @@ export class ParticipantEngine extends Emitter {
     this.unsubs.forEach((u) => u());
     this.roomUnsub?.();
     this.sigUnsub?.();
+    this.peopleUnsub?.();
     this.pc?.close();
     [this.mic, this.cam].forEach((t) => t?.stop());
   }

@@ -20,10 +20,11 @@ const LightHero = ({ eyebrow, title, highlight, subtitle, actions, children, cla
     <Container className="pb-14 pt-14 text-center sm:pb-20 sm:pt-20 lg:pt-24">
       <Reveal className="mx-auto max-w-4xl">
         {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
-        <h1 className="mt-6 text-[2.5rem] font-bold leading-[1.05] tracking-tight text-navy sm:text-6xl lg:text-7xl">
+        <h1 className="mt-6 text-[2.25rem] font-bold leading-[1.08] tracking-tight text-navy [overflow-wrap:break-word] min-[400px]:text-[2.5rem] sm:text-6xl lg:text-7xl">
           {title}{" "}
           {highlight && (
-            <span className="relative inline-block whitespace-nowrap text-navy">
+            // Phones: the highlight may wrap (a long phrase would run off the screen); keep it on one line from sm up
+            <span className="relative inline-block max-w-full text-navy sm:whitespace-nowrap">
               <span className="relative z-10">{highlight}</span>
               <svg aria-hidden="true" viewBox="0 0 300 12" preserveAspectRatio="none" className="absolute -bottom-1 left-0 z-0 h-3 w-full text-brand sm:-bottom-2 sm:h-4">
                 <path d="M2 9C60 3 140 1 298 6" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />

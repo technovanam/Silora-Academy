@@ -47,6 +47,19 @@ async function logLogin(req, { uid, email, success, reason, role, name }) {
   });
 }
 
+/** Find the login for an email, trying the aliased domain (e.g. .in → .com) if there's no exact match. */
+async function findAuthUser(email) {
+  try {
+    return await auth.getUserByEmail(email);
+  } catch (e) {
+    if (e?.code !== "auth/user-not-found") throw e;
+    const [local, domain] = email.split("@");
+    const alias = config.emailDomainAliases[domain];
+    if (!alias) throw e;
+    return auth.getUserByEmail(`${local}@${alias}`);
+  }
+}
+
 // ---- POST /auth/login ---------------------------------------------------------
 publicRouter.post(
   "/auth/login",
@@ -58,11 +71,12 @@ publicRouter.post(
 
     let authUser = null;
     try {
-      authUser = await auth.getUserByEmail(email);
+      authUser = await findAuthUser(email);
     } catch {
       /* unknown email – handled below without revealing it */
     }
     const user = authUser ? await getUser(authUser.uid) : null;
+    const accountEmail = authUser?.email || email; // the real email when an alias was typed
 
     if (user?.lockedUntil && new Date(user.lockedUntil) > new Date()) {
       await logLogin(req, { uid: user.id, email, success: false, reason: "locked", role: user.role, name: user.name });
@@ -70,7 +84,7 @@ publicRouter.post(
       fail(423, `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"} or reset your password.`, "locked");
     }
 
-    const ok = authUser ? await passwordIsValid(email, password) : false;
+    const ok = authUser ? await passwordIsValid(accountEmail, password) : false;
     if (!ok) {
       if (user) {
         const failed = (user.failedAttempts || 0) + 1;
@@ -108,20 +122,26 @@ publicRouter.post(
 publicRouter.post(
   "/auth/forgot",
   ah(async (req, res) => {
-    const email = str(req.body.email, 200).toLowerCase();
-    // Always answer the same way so the form can't be used to discover accounts
-    res.json({ ok: true });
-    if (!isEmail(email)) return;
+    const typed = str(req.body.email, 200).toLowerCase();
+    // Always answer the same way so the form can't be used to discover accounts.
+    // The email is sent BEFORE answering: on Cloud Functions, work after the
+    // response is sent may never run.
+    if (!isEmail(typed)) return res.json({ ok: true });
+    let email = typed;
     try {
-      const authUser = await auth.getUserByEmail(email);
+      const authUser = await findAuthUser(typed);
+      email = authUser.email; // an alias (.in) resets the real account and mails its real address
       const user = await getUser(authUser.uid);
-      if (!user || !user.active || user.deletedAt) return;
+      if (!user || !user.active || user.deletedAt) {
+        console.warn(`Password reset skipped for ${email}: ${!user ? "no portal account" : "account inactive"}`);
+        return res.json({ ok: true });
+      }
       const firebaseLink = await auth.generatePasswordResetLink(email);
       const oobCode = new URL(firebaseLink).searchParams.get("oobCode");
       const link = `${config.portalUrl}/portal/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
       await logActivity(req, "auth.password_reset_requested", { actor: user, summary: "Requested a password reset" });
       if (mailConfigured()) {
-        await trySendMail({
+        const sent = await trySendMail({
           from: config.mailFrom,
           to: email,
           subject: "Reset your Silora Academy portal password",
@@ -129,12 +149,17 @@ publicRouter.post(
             <p><a href="${link}" style="display:inline-block;background:#e8b112;color:#0a2d4a;padding:12px 20px;border-radius:999px;font-weight:bold;text-decoration:none">Reset password</a></p>
             <p style="color:#64748b;font-size:13px">If you didn't ask for this, you can ignore this email.</p>`,
         });
+        if (sent.status !== "sent") console.error(`Password reset email to ${email} ${sent.status}: ${sent.error}`);
+        else console.log(`Password reset email sent to ${email}`);
       } else {
         console.log(`\n🔑 Password reset link for ${email} (email not configured):\n${link}\n`);
       }
-    } catch {
-      /* unknown email – ignore */
+    } catch (e) {
+      // Same answer for unknown emails, but log why no mail went out
+      if (e?.code === "auth/user-not-found") console.warn(`Password reset requested for unknown email ${email}`);
+      else console.error("Password reset failed:", e?.message || e);
     }
+    res.json({ ok: true });
   })
 );
 

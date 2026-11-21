@@ -63,7 +63,8 @@ export function AuthProvider({ children }) {
     [loadMe]
   );
 
-  const logout = useCallback(async (reason) => {
+  const logout = useCallback(async (why) => {
+    const reason = typeof why === "string" ? why : null; // never a click event
     if (auth.currentUser && !reason) await api.post("/auth/logout").catch(() => {});
     await signOut(auth).catch(() => {});
     setEndedReason(reason || null);

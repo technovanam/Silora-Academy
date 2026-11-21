@@ -6,11 +6,11 @@
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Download, FileText, Image as ImageIcon, Loader2, MessagesSquare, Paperclip, PenSquare, Send, X } from "lucide-react";
+import { ArrowLeft, Ban, Check, CheckCheck, ChevronDown, Copy, Download, Eraser, FileText, Image as ImageIcon, Loader2, MessagesSquare, MoreVertical, Paperclip, Pencil, PenSquare, Send, Trash2, X } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { fmtDate, fmtSize, fmtTime, fromNow } from "../lib/format.js";
-import { Avatar, Button, Card, Dialog, Empty, ErrorBox, IconButton, Loading, PageHeader, SearchInput, cx, useUi } from "../ui/index.jsx";
+import { Avatar, Button, Card, Dialog, Empty, ErrorBox, IconButton, Loading, Menu, PageHeader, SearchInput, cx, useUi } from "../ui/index.jsx";
 
 const ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.mp3,.m4a,.zip";
 const MAX_MB = 25;
@@ -146,10 +146,32 @@ function Inbox({ mode, viewerId, viewerRole }) {
   );
 }
 
+/** WhatsApp-style ticks: one grey = sent, two grey = delivered, two blue = seen. */
+function tickState(createdAt, conv) {
+  if (!conv || !createdAt) return "sent";
+  if (conv.otherReadAt && conv.otherReadAt >= createdAt) return "seen";
+  if (conv.otherDeliveredAt && conv.otherDeliveredAt >= createdAt) return "delivered";
+  return "sent";
+}
+
+function Ticks({ state, onDark, className }) {
+  const label = { sent: "Sent", delivered: "Delivered", seen: "Seen" }[state];
+  const color = state === "seen" ? (onDark ? "text-sky-300" : "text-sky-500") : onDark ? "text-white/60" : "text-slate-400";
+  const Icon = state === "sent" ? Check : CheckCheck;
+  return (
+    <span title={label} aria-label={label} className={cx("inline-flex", color, className)}>
+      <Icon className="h-3.5 w-3.5" strokeWidth={2.5} />
+    </span>
+  );
+}
+
 function ConversationRow({ c, admin, viewerId, active, onClick }) {
   const last = c.lastMessage;
   const title = admin ? `${c.teacherName} · ${c.studentName}` : c.otherName;
-  const preview = last ? `${last.senderId === viewerId ? "You: " : admin ? `${last.senderId === c.teacherId ? c.teacherName.split(" ")[0] : c.studentName.split(" ")[0]}: ` : ""}${last.text || (last.file ? `📎 ${last.file}` : "")}` : "No messages yet";
+  const mineLast = !admin && last && last.senderId === viewerId;
+  const who = last ? (mineLast ? "" : admin ? `${last.senderId === c.teacherId ? c.teacherName.split(" ")[0] : c.studentName.split(" ")[0]}: ` : "") : "";
+  const body = last ? (last.deleted ? (mineLast ? "You deleted this message" : "This message was deleted") : last.text || (last.file ? `📎 ${last.file}` : "")) : "";
+  const preview = last ? `${who}${body}` : "No messages yet";
   return (
     <button type="button" onClick={onClick} className={cx("flex w-full items-center gap-3 px-4 py-3 text-left transition", active ? "bg-amber-50/70" : "hover:bg-slate-50")}>
       <Avatar name={admin ? c.teacherName : c.otherName} />
@@ -160,7 +182,8 @@ function ConversationRow({ c, admin, viewerId, active, onClick }) {
         </div>
         {admin && <p className="truncate text-[11px] text-slate-400">Teacher · Student</p>}
         <div className="flex items-center gap-2">
-          <p className={cx("min-w-0 flex-1 truncate text-[13px]", c.unread ? "font-medium text-ink" : "text-muted")}>{preview}</p>
+          {mineLast && !last.deleted && <Ticks state={tickState(last.at, c)} className="-mr-1 shrink-0" />}
+          <p className={cx("min-w-0 flex-1 truncate text-[13px]", last?.deleted && "italic", c.unread ? "font-medium text-ink" : "text-muted")}>{preview}</p>
           {c.unread > 0 && <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">{c.unread > 99 ? "99+" : c.unread}</span>}
         </div>
       </div>
@@ -169,6 +192,19 @@ function ConversationRow({ c, admin, viewerId, active, onClick }) {
 }
 
 // ---- One conversation ------------------------------------------------------------------------
+const byTime = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0);
+
+/** Apply created / edited / deleted / hidden messages from a poll to the loaded list. */
+function mergeChanges(cur, changes) {
+  const map = new Map(cur.map((m) => [m.id, m]));
+  const oldest = cur[0]?.createdAt;
+  for (const m of changes) {
+    if (m.hidden) map.delete(m.id);
+    else if (map.has(m.id) || !oldest || m.createdAt >= oldest) map.set(m.id, m);
+  }
+  return [...map.values()].sort(byTime);
+}
+
 function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
   const ui = useUi();
   const [conv, setConv] = useState(summary || null);
@@ -176,9 +212,16 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const listRef = useRef(null);
   const stick = useRef(true);
-  const lastAt = useRef(null);
+  const cursor = useRef(null);
+  const idsRef = useRef(new Set());
+
+  useEffect(() => {
+    idsRef.current = new Set((messages || []).map((m) => m.id));
+  }, [messages]);
 
   const markRead = useCallback(() => {
     if (admin) return; // an admin reading changes nothing
@@ -198,8 +241,8 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
         setConv(r.conversation);
         setMessages(r.messages);
         setHasMore(r.hasMore);
-        lastAt.current = r.messages.at(-1)?.createdAt || null;
-        if (r.conversation.unread) markRead();
+        cursor.current = r.cursor || null;
+        markRead();
         onChanged?.();
       })
       .catch((e) => alive && setError(e));
@@ -208,30 +251,28 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
     };
   }, [base, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // New messages (polling)
+  // Live updates: new, edited and deleted messages + the other person's ticks
+  const poll = useCallback(async () => {
+    if (!cursor.current) return;
+    const r = await api.get(`${base}/conversations/${id}`, { since: cursor.current });
+    setConv(r.conversation);
+    cursor.current = r.cursor || cursor.current;
+    if (!r.messages.length) return;
+    const incoming = r.messages.some((m) => !m.hidden && m.senderId !== viewerId && !idsRef.current.has(m.id));
+    setMessages((cur) => mergeChanges(cur || [], r.messages));
+    if (incoming) {
+      markRead();
+      onChanged?.();
+    }
+  }, [base, id, viewerId, markRead, onChanged]);
+
   useEffect(() => {
     if (!messages) return;
-    const t = setInterval(async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const r = await api.get(`${base}/conversations/${id}`, lastAt.current ? { after: lastAt.current } : undefined);
-        const fresh = r.messages;
-        if (!fresh.length) return;
-        setMessages((cur) => {
-          const seen = new Set(cur.map((m) => m.id));
-          return [...cur, ...fresh.filter((m) => !seen.has(m.id))];
-        });
-        lastAt.current = fresh.at(-1).createdAt;
-        if (fresh.some((m) => m.senderId !== viewerId)) {
-          markRead();
-          onChanged?.();
-        }
-      } catch {
-        /* try again next tick */
-      }
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") poll().catch(() => {});
     }, THREAD_POLL_MS);
     return () => clearInterval(t);
-  }, [base, id, !!messages, viewerId, markRead, onChanged]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [!!messages, poll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep scrolled to the bottom unless the reader scrolled up
   useEffect(() => {
@@ -263,9 +304,44 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
 
   const onSent = (m) => {
     stick.current = true;
-    setMessages((cur) => [...(cur || []), m]);
-    lastAt.current = m.createdAt;
+    setMessages((cur) => mergeChanges(cur || [], [m]));
     onChanged?.();
+  };
+
+  const onEdited = (m) => {
+    setMessages((cur) => mergeChanges(cur || [], [m]));
+    setEditing(null);
+    onChanged?.();
+  };
+
+  const remove = async (m, scope) => {
+    try {
+      await api.del(`/messages/conversations/${id}/messages/${m.id}?for=${scope}`);
+      setMessages((cur) => (scope === "me" ? cur.filter((x) => x.id !== m.id) : cur.map((x) => (x.id === m.id ? { ...x, deleted: true, text: "", file: null } : x))));
+      if (editing?.id === m.id) setEditing(null);
+      setDeleting(null);
+      onChanged?.();
+    } catch (e) {
+      ui.error(e);
+    }
+  };
+
+  const clearChat = async (removeChat) => {
+    const ok = await ui.confirm({
+      title: removeChat ? "Delete this chat?" : "Clear this chat?",
+      message: removeChat
+        ? "The chat and its messages will be removed from your list. The other person keeps their copy. If a new message arrives, the chat comes back."
+        : "All messages will be removed for you. The other person keeps their copy.",
+      confirmLabel: removeChat ? "Delete chat" : "Clear chat",
+      danger: true,
+      onConfirm: () => api.post(`/messages/conversations/${id}/clear`, { remove: removeChat }),
+    });
+    if (!ok) return;
+    setMessages([]);
+    setHasMore(false);
+    setEditing(null);
+    onChanged?.();
+    if (removeChat) onBack();
   };
 
   const title = admin ? `${conv?.teacherName || ""} · ${conv?.studentName || ""}` : conv?.otherName;
@@ -280,6 +356,15 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
           <p className="truncate text-sm font-semibold text-navy">{title || "…"}</p>
           <p className="truncate text-xs text-muted">{admin ? "Teacher · Student" : summary?.otherId ? "Private conversation" : ""}</p>
         </div>
+        {!admin && messages && (
+          <Menu
+            trigger={<IconButton icon={MoreVertical} label="Chat options" />}
+            items={[
+              { label: "Clear chat", icon: Eraser, onClick: () => clearChat(false) },
+              { label: "Delete chat", icon: Trash2, danger: true, onClick: () => clearChat(true) },
+            ]}
+          />
+        )}
       </div>
 
       <div ref={listRef} onScroll={onScroll} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-slate-50/60 px-3 py-4 sm:px-5" data-lenis-prevent>
@@ -311,7 +396,20 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
                       <span className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">{dayLabel(m.createdAt)}</span>
                     </div>
                   )}
-                  <Bubble m={m} mine={mine} grouped={grouped} name={admin ? nameOf(m) : null} convId={id} base={base} />
+                  <Bubble
+                    m={m}
+                    mine={mine}
+                    own={!admin && m.senderId === viewerId}
+                    admin={admin}
+                    grouped={grouped}
+                    name={admin ? nameOf(m) : null}
+                    convId={id}
+                    base={base}
+                    ticks={!admin && m.senderId === viewerId && !m.deleted ? tickState(m.createdAt, conv) : null}
+                    editingThis={editing?.id === m.id}
+                    onEdit={() => setEditing(m)}
+                    onDelete={() => setDeleting(m)}
+                  />
                 </React.Fragment>
               );
             })}
@@ -319,21 +417,120 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
         )}
       </div>
 
-      {!admin && messages && <Composer id={id} onSent={onSent} />}
+      {!admin && messages && <Composer id={id} onSent={onSent} editing={editing} onEdited={onEdited} onCancelEdit={() => setEditing(null)} />}
+      {!admin && <DeleteDialog m={deleting} viewerId={viewerId} onClose={() => setDeleting(null)} onDelete={remove} />}
     </>
   );
 }
 
-function Bubble({ m, mine, grouped, name, convId, base }) {
+const EDIT_WINDOW_MS = 15 * 60000;
+const DELETE_WINDOW_MS = 48 * 3600000;
+const canEdit = (m) => !m.deleted && !!m.text && Date.now() - new Date(m.createdAt).getTime() < EDIT_WINDOW_MS;
+const canDeleteForEveryone = (m) => !m.deleted && Date.now() - new Date(m.createdAt).getTime() < DELETE_WINDOW_MS;
+
+function Bubble({ m, mine, own, admin, grouped, name, convId, base, ticks, editingThis, onEdit, onDelete }) {
+  const ui = useUi();
+  const [showEdits, setShowEdits] = useState(false);
+  const copy = () =>
+    navigator.clipboard
+      ?.writeText(m.text)
+      .then(() => ui.toast("Copied"))
+      .catch(() => {});
+
+  // Admins see what was deleted (struck through) – teachers & students see a placeholder
+  const deletedForMember = m.deleted && !admin;
+  const items = admin
+    ? [{ label: "Copy text", icon: Copy, onClick: copy, hidden: !m.text }]
+    : [
+        { label: "Copy text", icon: Copy, onClick: copy, hidden: !m.text || m.deleted },
+        { label: "Edit", icon: Pencil, onClick: onEdit, hidden: !own || !canEdit(m) },
+        { label: "Delete", icon: Trash2, onClick: onDelete, danger: true },
+      ];
+  const hasMenu = items.some((i) => !i.hidden);
+
   return (
-    <div className={cx("flex flex-col", mine ? "items-end" : "items-start", grouped ? "mt-1" : "mt-3")}>
+    <div className={cx("group flex flex-col", mine ? "items-end" : "items-start", grouped ? "mt-1" : "mt-3")}>
       {!grouped && name && <p className="mb-1 px-1 text-[11px] font-semibold text-slate-500">{name}</p>}
-      <div className={cx("max-w-[85%] overflow-hidden rounded-2xl text-sm shadow-sm sm:max-w-[70%]", mine ? "rounded-br-md bg-navy text-white" : "rounded-bl-md bg-white text-ink ring-1 ring-slate-200")}>
-        {m.file && <Attachment file={m.file} mine={mine} convId={convId} messageId={m.id} base={base} />}
-        {m.text && <p className={cx("whitespace-pre-wrap break-words px-3.5 py-2", m.file && "pt-1.5")}>{m.text}</p>}
+      <div className={cx("flex max-w-[88%] items-center gap-1 sm:max-w-[72%]", mine && "flex-row-reverse")}>
+        <div
+          className={cx(
+            "min-w-0 overflow-hidden rounded-2xl text-sm shadow-sm transition",
+            deletedForMember ? "bg-white text-slate-400 ring-1 ring-slate-200" : mine ? "rounded-br-md bg-navy text-white" : "rounded-bl-md bg-white text-ink ring-1 ring-slate-200",
+            editingThis && "ring-2 ring-brand"
+          )}
+        >
+          {deletedForMember ? (
+            <p className="flex items-center gap-1.5 px-3.5 py-2 italic">
+              <Ban className="h-3.5 w-3.5 shrink-0" />
+              {own ? "You deleted this message" : "This message was deleted"}
+            </p>
+          ) : (
+            <>
+              {m.file && <Attachment file={m.file} mine={mine} convId={convId} messageId={m.id} base={base} />}
+              {m.text && <p className={cx("whitespace-pre-wrap break-words px-3.5 py-2", m.file && "pt-1.5", m.deleted && "line-through opacity-70")}>{m.text}</p>}
+            </>
+          )}
+        </div>
+        {hasMenu && (
+          <span className="shrink-0 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+            <Menu align={mine ? "right" : "left"} trigger={<IconButton icon={ChevronDown} label="Message options" className="h-7 w-7 text-slate-400" />} items={items} />
+          </span>
+        )}
       </div>
-      <p className="mt-0.5 px-1 text-[10px] text-slate-400">{fmtTime(m.createdAt)}</p>
+      <p className={cx("mt-0.5 flex items-center gap-1 px-1 text-[10px] text-slate-400", mine && "flex-row-reverse")}>
+        {ticks && <Ticks state={ticks} />}
+        <span>
+          {m.editedAt && !deletedForMember && (
+            <button type="button" disabled={!admin || !m.edits?.length} onClick={() => setShowEdits((s) => !s)} className={cx("mr-1 font-medium", admin && m.edits?.length && "underline decoration-dotted")}>
+              Edited
+            </button>
+          )}
+          {admin && m.deleted && <span className="mr-1 font-semibold text-rose-500">Deleted by sender ·</span>}
+          {fmtTime(m.createdAt)}
+        </span>
+      </p>
+      {admin && showEdits && m.edits?.length > 0 && (
+        <div className="mt-1 max-w-[85%] rounded-xl bg-white px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200 sm:max-w-[70%]">
+          <p className="mb-1 font-semibold text-slate-600">Earlier versions</p>
+          {m.edits.map((e, i) => (
+            <p key={i} className="whitespace-pre-wrap break-words border-t border-slate-100 py-1 first:border-0">
+              <span className="text-slate-400">{fmtTime(e.at)} · </span>
+              {e.text || "(empty)"}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+function DeleteDialog({ m, viewerId, onClose, onDelete }) {
+  const [busy, setBusy] = useState(null);
+  useEffect(() => setBusy(null), [m]);
+  if (!m) return null;
+  const everyone = m.senderId === viewerId && canDeleteForEveryone(m);
+  const run = async (scope) => {
+    setBusy(scope);
+    await onDelete(m, scope);
+    setBusy(null);
+  };
+  return (
+    <Dialog open onClose={onClose} title="Delete message?" size="sm">
+      <p className="text-sm text-slate-600">{everyone ? "Delete it for everyone in this chat, or only from your view." : "This removes the message from your view only."}</p>
+      <div className="mt-5 flex flex-col items-stretch gap-2 sm:items-end">
+        {everyone && (
+          <Button variant="danger" loading={busy === "everyone"} disabled={!!busy} onClick={() => run("everyone")} className="sm:min-w-48">
+            Delete for everyone
+          </Button>
+        )}
+        <Button variant={everyone ? "outline" : "danger"} loading={busy === "me"} disabled={!!busy} onClick={() => run("me")} className="sm:min-w-48">
+          Delete for me
+        </Button>
+        <Button variant="ghost" disabled={!!busy} onClick={onClose} className="sm:min-w-48">
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -406,14 +603,47 @@ function Attachment({ file, mine, convId, messageId, base }) {
   );
 }
 
-function Composer({ id, onSent }) {
+function Composer({ id, onSent, editing, onEdited, onCancelEdit }) {
   const ui = useUi();
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [progress, setProgress] = useState(null);
   const fileInput = useRef(null);
   const area = useRef(null);
+  const draft = useRef("");
   const sending = progress !== null;
+
+  // Entering edit mode loads the message into the box (and keeps the draft for later)
+  useEffect(() => {
+    if (editing) {
+      draft.current = text;
+      setText(editing.text || "");
+      setTimeout(() => {
+        const el = area.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+      }, 0);
+    } else {
+      setText(draft.current);
+      draft.current = "";
+    }
+  }, [editing?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveEdit = async () => {
+    const body = text.trim();
+    if (!body && !editing.file) return;
+    setProgress(0);
+    try {
+      const r = await api.patch(`/messages/conversations/${id}/messages/${editing.id}`, { text: body });
+      onEdited(r.message);
+    } catch (err) {
+      ui.error(err);
+    } finally {
+      setProgress(null);
+    }
+  };
 
   useEffect(() => {
     const el = area.current;
@@ -430,6 +660,7 @@ function Composer({ id, onSent }) {
 
   const send = async (e) => {
     e?.preventDefault();
+    if (editing) return saveEdit();
     const body = text.trim();
     if ((!body && !file) || sending) return;
     const fd = new FormData();
@@ -459,7 +690,17 @@ function Composer({ id, onSent }) {
         pick(e.dataTransfer.files?.[0]);
       }}
     >
-      {file && (
+      {editing && (
+        <div className="mb-2 flex items-center gap-2.5 rounded-xl border-l-4 border-brand bg-amber-50/70 px-3 py-2">
+          <Pencil className="h-4 w-4 shrink-0 text-[#8a6700]" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-semibold text-[#8a6700]">Editing message</span>
+            <span className="block truncate text-xs text-slate-500">{editing.text}</span>
+          </span>
+          {!sending && <IconButton icon={X} label="Cancel editing" onClick={onCancelEdit} className="h-7 w-7" />}
+        </div>
+      )}
+      {file && !editing && (
         <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
           <Paperclip className="h-4 w-4 shrink-0 text-slate-400" />
           <span className="min-w-0 flex-1 truncate text-sm text-ink">{file.name}</span>
@@ -474,15 +715,17 @@ function Composer({ id, onSent }) {
       )}
       <div className="flex items-end gap-2">
         <input ref={fileInput} type="file" accept={ACCEPT} className="hidden" onChange={(e) => (pick(e.target.files?.[0]), (e.target.value = ""))} />
-        <IconButton icon={Paperclip} label="Attach a file" onClick={() => fileInput.current?.click()} disabled={sending} className="h-11 w-11 shrink-0" />
+        <IconButton icon={Paperclip} label="Attach a file" onClick={() => fileInput.current?.click()} disabled={sending || !!editing} className="h-11 w-11 shrink-0 disabled:opacity-40" />
         <textarea
           ref={area}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) send(e);
+            if (e.key === "Escape" && editing) onCancelEdit();
           }}
           onPaste={(e) => {
+            if (editing) return;
             const f = [...(e.clipboardData?.files || [])][0];
             if (f) {
               e.preventDefault();
@@ -494,11 +737,13 @@ function Composer({ id, onSent }) {
           placeholder="Write a message…"
           className="scrollbar-thin min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
         />
-        <button type="submit" disabled={(!text.trim() && !file) || sending} aria-label="Send" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-navy transition hover:bg-brand-hover disabled:opacity-40">
-          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        <button type="submit" disabled={(!text.trim() && !(editing ? editing.file : file)) || sending} aria-label={editing ? "Save" : "Send"} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-navy transition hover:bg-brand-hover disabled:opacity-40">
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : editing ? <Check className="h-4 w-4" strokeWidth={3} /> : <Send className="h-4 w-4" />}
         </button>
       </div>
-      <p className="mt-1.5 px-1 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line · Files up to {MAX_MB} MB are kept for 7 days</p>
+      <p className="mt-1.5 hidden px-1 text-[11px] text-slate-400 sm:block">
+        {editing ? "Enter to save · Esc to cancel" : `Enter to send · Shift+Enter for a new line · Files up to ${MAX_MB} MB are kept for 7 days`}
+      </p>
     </form>
   );
 }

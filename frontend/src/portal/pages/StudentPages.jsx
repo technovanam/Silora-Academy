@@ -38,9 +38,9 @@ export function StudentDashboard() {
       )}
 
       <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-        <div className="relative overflow-hidden rounded-3xl bg-navy p-6 text-white sm:p-8">
-          <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-brand/25 blur-3xl" />
-          <p className="relative text-xs font-semibold uppercase tracking-wider text-brand">{next ? (js === "live" || js === "overtime" ? "Happening now" : "Next class") : "Classes"}</p>
+        <div className={cx("relative overflow-hidden rounded-3xl p-6 sm:p-8", next ? "bg-navy text-white" : "border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-sky-50 text-navy")}>
+          <div className={cx("absolute -right-16 -top-16 h-56 w-56 rounded-full blur-3xl", next ? "bg-brand/25" : "bg-brand/20")} />
+          <p className={cx("relative text-xs font-semibold uppercase tracking-wider", next ? "text-brand" : "text-[#8a6700]")}>{next ? (js === "live" || js === "overtime" ? "Happening now" : "Next class") : "Classes"}</p>
           {next ? (
             <div className="relative">
               <h2 className="mt-2 text-2xl font-bold text-white sm:text-3xl">{next.title}</h2>
@@ -65,9 +65,14 @@ export function StudentDashboard() {
               <p className="mt-4 text-xs text-white/50">The Join button opens 15 minutes before class. You'll also get a reminder 5 minutes before.</p>
             </div>
           ) : (
-            <div className="relative">
-              <h2 className="mt-2 text-2xl font-bold">No upcoming classes</h2>
-              <p className="mt-2 text-white/70">When your teacher schedules a class it will show up here.</p>
+            <div className="relative flex items-start gap-4">
+              <span className="mt-2 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[#8a6700] shadow-sm ring-1 ring-amber-200">
+                <CalendarDays className="h-6 w-6" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="mt-2 text-xl font-bold text-navy sm:text-2xl">No upcoming classes</h2>
+                <p className="mt-1.5 text-slate-600">When your teacher schedules a class it will show up here.</p>
+              </div>
             </div>
           )}
         </div>

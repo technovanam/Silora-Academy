@@ -129,7 +129,8 @@ app.get("/", (req, res) => {
  *   - message: The message content
  * 
  * Process:
- *   1. Immediately responds to user with success message
+ *   1. Sends the emails below, then answers the user (on Cloud Functions work
+ *      left running after the answer may never finish)
  *   2. Sends notification email to admin with contact details
  *   3. Sends auto-reply confirmation to user
  */
@@ -138,8 +139,6 @@ app.post("/api/contact", upload.none(), async (req, res) => {
     // Extract form data from request body
     const { user_name, user_email, user_phone, message } = req.body;
 
-    // Respond immediately to user (don't wait for emails)
-    res.status(200).json({ success: true, message: "Message received successfully" });
 
     // ========================================================================
     // ADMIN NOTIFICATION EMAIL
@@ -185,7 +184,7 @@ app.post("/api/contact", upload.none(), async (req, res) => {
     // Errors are logged but don't affect the user's response
 
     // Send notification to admin
-    sendSiteEmail({
+    await sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Contact Form Submission from ${user_name}`,
@@ -194,12 +193,16 @@ app.post("/api/contact", upload.none(), async (req, res) => {
     }).catch(err => console.error("Admin email error:", err));
 
     // Send confirmation to user
-    sendSiteEmail({
+    await sendSiteEmail({
       from: DEFAULT_FROM,
       to: user_email,
       subject: `We've Received Your Message - Silora Academy`,
       html: autoReplyHtml
     }).catch(err => console.error("Auto-reply error:", err));
+
+    // Answer after the emails are sent: on Cloud Functions, work left running
+    // after the response may never finish.
+    res.status(200).json({ success: true, message: "Message received successfully" });
 
   } catch (err) {
     console.error("Contact form error:", err);
@@ -224,7 +227,8 @@ app.post("/api/contact", upload.none(), async (req, res) => {
  *   - country: Country
  * 
  * Process:
- *   1. Immediately responds to user with success message
+ *   1. Sends the emails below, then answers the user (on Cloud Functions work
+ *      left running after the answer may never finish)
  *   2. Sends notification email to admin with booking details
  *   3. Sends confirmation email to user with submitted details
  */
@@ -233,8 +237,6 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
     // Extract form data from request body
     const { name, email, mobile, class_grade, board, city, state, country } = req.body;
 
-    // Respond immediately to user
-    res.status(200).json({ success: true, message: "Demo request received successfully" });
 
     // ========================================================================
     // ADMIN NOTIFICATION EMAIL
@@ -293,7 +295,7 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
     // Send emails asynchronously (fire-and-forget pattern)
 
     // Send notification to admin
-    sendSiteEmail({
+    await sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Student Demo Booking - ${name}`,
@@ -302,12 +304,16 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
     }).catch(err => console.error("Student demo email error:", err));
 
     // Send confirmation to user
-    sendSiteEmail({
+    await sendSiteEmail({
       from: DEFAULT_FROM,
       to: email,
       subject: `Your Demo Session Request Is Confirmed - Silora Academy`,
       html: userConfirmationHtml
     }).catch(err => console.error("Student auto-reply error:", err));
+
+    // Answer after the emails are sent: on Cloud Functions, work left running
+    // after the response may never finish.
+    res.status(200).json({ success: true, message: "Demo request received successfully" });
 
   } catch (err) {
     console.error("Student form error:", err);
@@ -348,8 +354,6 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
     // Get uploaded file (if any) from Multer
     const file = req.file;
 
-    // Respond immediately to user
-    res.status(200).json({ success: true, message: "Application received successfully" });
 
     // ========================================================================
     // PREPARE FILE ATTACHMENT (if resume was uploaded)
@@ -448,7 +452,7 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
     // Send emails asynchronously (fire-and-forget pattern)
 
     // Send notification to admin with resume attachment
-    sendSiteEmail({
+    await sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Tutor Application - ${tutor_name}`,
@@ -468,12 +472,16 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
       });
 
     // Send confirmation to applicant (no attachment needed)
-    sendSiteEmail({
+    await sendSiteEmail({
       from: DEFAULT_FROM,
       to: tutor_email,
       subject: `Application Received - Silora Academy Teaching Opportunity`,
       html: applicantConfirmationHtml
     }).catch(err => console.error("Tutor auto-reply error:", err));
+
+    // Answer after the emails are sent: on Cloud Functions, work left running
+    // after the response may never finish.
+    res.status(200).json({ success: true, message: "Application received successfully" });
 
   } catch (err) {
     console.error("Tutor form error:", err);

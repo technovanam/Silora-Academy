@@ -28,7 +28,33 @@ export const docData = (snap) => (snap.exists ? { id: snap.id, ...snap.data() } 
 export const listData = (qs) => qs.docs.map((d) => ({ id: d.id, ...d.data() }));
 
 export const str = (v, max = 500) => (v === undefined || v === null ? "" : String(v).trim().slice(0, max));
-export const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || ""));
+// ---- Consistent people data (same rules as the portal's format.js) ----
+/** "SASIKIRAN TT" / "sanjana b" → "Sasikiran TT" / "Sanjana B"; mixed-case words are kept. */
+export const normName = (v) =>
+  String(v || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => (w.length <= 2 ? w.toUpperCase() : w !== w.toUpperCase() && w !== w.toLowerCase() ? w : w[0].toUpperCase() + w.slice(1).toLowerCase()))
+    .join(" ");
+/** "9" / "9th" / "grade 9" → "Grade 9". */
+export const normGrade = (v) => {
+  const s = String(v || "").trim();
+  const n = /^(?:grade|class|std\.?)?\s*(\d{1,2})(?:st|nd|rd|th)?$/i.exec(s);
+  return n ? `Grade ${Number(n[1])}` : s;
+};
+/** Indian numbers → "+91 98765 43210"; others keep their country code. */
+export const normPhone = (v) => {
+  const raw = String(v || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10 && !raw.startsWith("+")) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+  const m = /^\+(\d{1,4})[\s-]+(.+)$/.exec(raw);
+  return m ? `+${m[1]} ${m[2].replace(/\D/g, "")}` : `${raw.startsWith("+") ? "+" : ""}${digits}`;
+};
+
+export const isEmail =(v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || ""));
 export const toIso = (v) => {
   if (!v) return null;
   const d = new Date(v);

@@ -223,10 +223,12 @@ export function ProfilePage() {
               <Toggle label="Email notifications" description={`Sent to ${c.email || "your email"}`} checked={user.notifyEmail} onChange={(v) => setPref("notifyEmail", v)} />
               <Toggle label="Browser push notifications" description="Pop-up alerts on this device, e.g. 5 minutes before class" checked={user.notifyPush} onChange={(v) => setPref("notifyPush", v)} />
               {user.notifyPush && (
-                <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface p-3">
-                  <Smartphone className="h-4 w-4 text-slate-500" />
-                  <span className="min-w-0 flex-1 text-sm text-muted">{settings?.pushAvailable ? "Allow notifications on this browser to receive push alerts." : "Push alerts become available once the portal runs on the live Firebase project."}</span>
-                  <Button size="sm" variant="outline" icon={settings?.pushAvailable ? Bell : BellOff} onClick={turnOnPush} disabled={!settings?.pushAvailable}>
+                <div className="flex flex-col gap-3 rounded-xl bg-surface p-3 sm:flex-row sm:items-center">
+                  <p className="flex min-w-0 flex-1 items-start gap-2.5 text-sm text-muted">
+                    <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                    <span>{settings?.pushAvailable ? "Allow notifications on this browser to receive push alerts." : "Push alerts become available once the portal runs on the live Firebase project."}</span>
+                  </p>
+                  <Button size="sm" variant="outline" icon={settings?.pushAvailable ? Bell : BellOff} onClick={turnOnPush} disabled={!settings?.pushAvailable} className="self-end sm:self-auto">
                     Enable on this device
                   </Button>
                 </div>

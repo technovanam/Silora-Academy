@@ -251,6 +251,13 @@ body {
 .scrollbar-thin::-webkit-scrollbar-thumb {
   border-width: 2px;
 }
+/* Sideways-scrolling tab rows: no visible bar */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 
 button, .btn, input[type="button"], input[type="submit"] {
   -webkit-appearance: none;

@@ -42,6 +42,7 @@ export const C = {
   loginEvents: "loginEvents",
   meetings: "meetings",
   liveRooms: "liveRooms", // live class: room, people (waiting / in class), signals, chat
+  recordings: "recordings", // class recordings (video in Storage under recordings/)
   scheduleRequests: "scheduleRequests",
   materials: "materials",
   materialOpens: "materialOpens",

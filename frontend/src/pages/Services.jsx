@@ -252,7 +252,8 @@ const ServicesPage = () => {
         }
       >
         <p className="text-sm font-medium text-slate-500">Choose a category</p>
-        <div role="tablist" aria-label="Service categories" className="mx-auto mt-4 flex max-w-5xl flex-wrap justify-center gap-2">
+        {/* Phones: an even, full-width list (name left, count right). Larger screens: centred chips. */}
+        <div role="tablist" aria-label="Service categories" className="mx-auto mt-4 grid max-w-sm grid-cols-1 gap-2 sm:flex sm:max-w-5xl sm:flex-wrap sm:justify-center">
           {categories.map((category) => {
             const active = activeCategory === category;
             const count = servicesData.filter((s) => s.category === category).length;
@@ -263,12 +264,12 @@ const ServicesPage = () => {
                 aria-selected={active}
                 aria-controls="services"
                 onClick={() => setActiveCategory(category)}
-                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all duration-200 sm:inline-flex sm:w-auto sm:justify-center sm:whitespace-nowrap sm:rounded-full sm:py-2.5 ${
                   active ? "border-navy bg-navy text-white shadow-md" : "border-line bg-white text-slate-600 hover:border-slate-300 hover:text-navy"
                 }`}
               >
-                {category}
-                <span className={`rounded-full px-1.5 text-[11px] font-semibold ${active ? "bg-brand text-navy" : "bg-surface text-slate-400"}`}>{count}</span>
+                <span className="min-w-0">{category}</span>
+                <span className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${active ? "bg-brand text-navy" : "bg-surface text-slate-400"}`}>{count}</span>
               </button>
             );
           })}

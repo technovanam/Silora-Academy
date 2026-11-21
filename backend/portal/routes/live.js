@@ -17,6 +17,7 @@ import { db, C } from "../firebase.js";
 import { ah, fail, nowIso, newId, str, listData, getMany } from "../util.js";
 import { canAccess, canSeeAll } from "./meetings.js";
 import { logActivity } from "../services/core.js";
+import { finishAbandonedRecordings } from "./recordings.js";
 
 const router = Router();
 export const OPEN_EARLY_MIN = 15; // the class can be opened this long before the start
@@ -99,7 +100,7 @@ router.get(
     } catch (e) {
       windowError = { message: e.message, code: e.code };
     }
-    res.json({ meeting: meetingInfo(m, teacher?.name || "Teacher"), role: asHost ? "host" : "participant", live: hostHere, windowError, pingSec: PING_SEC });
+    res.json({ meeting: meetingInfo(m, teacher?.name || "Teacher"), role: asHost ? "host" : "participant", live: hostHere, hostName: hostHere ? room.hostName || "" : "", inClass: hostHere ? room.inClass || 0 : 0, recording: hostHere && !!room.recording, windowError, pingSec: PING_SEC });
   })
 );
 
@@ -123,6 +124,7 @@ router.post(
       if (!live) {
         // New session: anyone still marked "in" from an earlier session is closed off
         sessionId = newId();
+        if (room?.recording?.id) await finishAbandonedRecordings(m.id).catch(() => {});
         const stale = listData(await peopleOf(m.id).where("status", "==", "in").get());
         for (const p of stale) await peopleOf(m.id).doc(p.id).update({ status: "left", ...closeFields(p, p.lastSeenAt || now) });
       }
@@ -140,6 +142,10 @@ router.post(
           screen: false,
           hostCam: false,
           hostMic: false,
+          board: false,
+          allowDraw: false,
+          chatOn: live ? room.chatOn !== false : true,
+          recording: live ? room.recording || null : null,
         },
         { merge: true }
       );
@@ -252,7 +258,9 @@ export async function endRoom(meetingId, at = nowIso()) {
   }
   const signals = await ref.collection("signals").get();
   for (const d of signals.docs) await d.ref.delete();
-  await ref.update({ status: "ended", endedAt: at, inClass: 0, speakers: [null, null], screen: false });
+  await ref.update({ status: "ended", endedAt: at, inClass: 0, speakers: [null, null], screen: false, board: false });
+  // A recording the teacher's browser didn't close keeps what was uploaded
+  await finishAbandonedRecordings(meetingId).catch((e) => console.error("finish recordings", e.message));
 }
 
 router.post(

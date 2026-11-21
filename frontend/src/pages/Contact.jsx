@@ -84,10 +84,17 @@ const Contact = () => {
           </>
         }
       >
-        <ul className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+        {/* Phones: three equal tiles side by side (icon over label). Larger screens: a row of pills. */}
+        <ul className="mx-auto grid max-w-md grid-cols-3 gap-2 sm:flex sm:max-w-none sm:flex-wrap sm:items-center sm:justify-center sm:gap-3">
           {TRUST_CHIPS.map(([Icon, label]) => (
-            <li key={label} className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-navy shadow-sm">
-              <Icon className="h-4 w-4 text-brand-hover" /> {label}
+            <li
+              key={label}
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-white px-2 py-3.5 text-center text-xs font-semibold leading-snug text-navy shadow-sm sm:inline-flex sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 sm:py-2 sm:text-sm sm:font-medium"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-soft sm:h-auto sm:w-auto sm:bg-transparent">
+                <Icon className="h-4 w-4 text-brand-hover" />
+              </span>
+              {label}
             </li>
           ))}
         </ul>

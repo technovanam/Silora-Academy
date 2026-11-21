@@ -134,29 +134,31 @@ export async function notify(userIds, payload) {
         attempts: 1,
         channels: { inApp: { status: "delivered" }, email: { status: "pending" }, push: { status: "pending" } },
         status: "pending",
+        // Safety net: if delivery below doesn't finish, the retry job picks it up
+        nextRetryAt: addMinutes(new Date(), 2).toISOString(),
       };
       batch.set(ref, doc);
       created.push({ id: ref.id, ...doc });
     }
     await batch.commit();
   }
-  // Send email/push without blocking the API response
-  setImmediate(async () => {
-    for (const n of created) {
-      try {
-        const channels = await deliverChannels(n, users[n.userId], contacts[n.userId]);
-        const status = overall(channels);
-        await db.collection(C.notifications).doc(n.id).update({
-          channels,
-          status,
-          lastAttemptAt: nowIso(),
-          nextRetryAt: status === "delivered" ? null : addMinutes(new Date(), 5).toISOString(),
-        });
-      } catch (e) {
-        console.error("notification delivery failed", e.message);
-      }
+  // Send email/push now (5 at a time). On Cloud Functions, work left running
+  // after the API response may never finish, so the caller waits for this.
+  const deliver = async (n) => {
+    try {
+      const channels = await deliverChannels(n, users[n.userId], contacts[n.userId]);
+      const status = overall(channels);
+      await db.collection(C.notifications).doc(n.id).update({
+        channels,
+        status,
+        lastAttemptAt: nowIso(),
+        nextRetryAt: status === "delivered" ? null : addMinutes(new Date(), 5).toISOString(),
+      });
+    } catch (e) {
+      console.error("notification delivery failed", e.message);
     }
-  });
+  };
+  for (const group of chunk(created, 5)) await Promise.all(group.map(deliver));
   return created;
 }
 
@@ -167,7 +169,7 @@ export async function retryNotification(id) {
   if (!snap.exists) return null;
   const n = { id, ...snap.data() };
   const failed = Object.entries(n.channels || {})
-    .filter(([, v]) => v.status === "failed")
+    .filter(([, v]) => v.status === "failed" || v.status === "pending")
     .map(([k]) => k);
   if (!failed.length) return n;
   const [user, contactSnap] = await Promise.all([db.collection(C.users).doc(n.userId).get(), db.collection(C.contacts).doc(n.userId).get()]);

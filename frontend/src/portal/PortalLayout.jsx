@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell, BookOpen, CalendarDays, CalendarClock, ChartColumn, ClipboardCheck, Database, FolderOpen, GraduationCap, LayoutDashboard,
-  KeyRound, LogOut, MessagesSquare, ChevronRight, ChevronDown, PanelLeftClose, PanelLeftOpen, Megaphone, Menu, Settings, ShieldCheck, Siren, TrendingUp, User, Users, X, BellRing, CheckCheck, ExternalLink,
+  KeyRound, LogOut, MessagesSquare, ChevronRight, ChevronDown, PanelLeftClose, PanelLeftOpen, Megaphone, Menu, Settings, Video, ShieldCheck, Siren, TrendingUp, User, Users, X, BellRing, CheckCheck, ExternalLink,
 } from "lucide-react";
 import { SITE } from "../data/site";
 import { useAuth, can } from "./lib/auth.jsx";
@@ -88,6 +88,7 @@ export function navFor(user) {
     { to: "/portal/admin/requests", label: "Schedule requests", icon: CalendarClock, perm: "classes" },
     { to: "/portal/admin/materials", label: "Materials", icon: FolderOpen, perm: "materials" },
     { to: "/portal/admin/attendance", label: "Attendance", icon: ClipboardCheck, perm: "attendance" },
+    { to: "/portal/admin/recordings", label: "Recordings", icon: Video, perm: "recordings" },
     { section: "Communication" },
     { to: "/portal/admin/messages", label: "Messages", icon: MessagesSquare, perm: "messages" },
     { to: "/portal/admin/announcements", label: "Announcements", icon: Megaphone, perm: "announcements" },
@@ -208,7 +209,7 @@ function Sidebar({ user, onNavigate, collapsed = false, onToggle, onLogout }) {
                 <span className="block truncate text-[11px] text-slate-500">{user.superAdmin ? "Super admin" : roleLabel[user.role]}</span>
               </span>
             </NavLink>
-            <button type="button" onClick={onLogout} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600" aria-label="Sign out" title="Sign out">
+            <button type="button" onClick={() => onLogout()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600" aria-label="Sign out" title="Sign out">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
@@ -474,10 +475,13 @@ export default function PortalLayout() {
         </header>
         <main className="mx-auto w-full max-w-[1320px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           {user?.mustChangePassword && pathname !== "/portal/profile" && (
-            <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <KeyRound className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 flex-1">You're signed in with a password the academy sent you. Please choose your own password to keep your account safe.</span>
-              <Link to="/portal/profile" className="rounded-lg bg-navy px-3.5 py-1.5 font-semibold text-white hover:bg-navy-light">
+            // Phones: message across the full width, button underneath on the right
+            <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center">
+              <p className="flex min-w-0 flex-1 items-start gap-2.5 leading-relaxed">
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>You're signed in with a password the academy sent you. Please choose your own password to keep your account safe.</span>
+              </p>
+              <Link to="/portal/profile" className="self-end whitespace-nowrap rounded-lg bg-navy px-3.5 py-1.5 font-semibold text-white hover:bg-navy-light sm:self-auto">
                 Change password
               </Link>
             </div>

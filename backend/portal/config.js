@@ -44,11 +44,25 @@ export const config = {
   clamdHost: process.env.CLAMD_HOST || "",
   clamdPort: num(process.env.CLAMD_PORT, 3310),
 
-  // Most students in one class (scheduling only – there is no live video in the portal)
+  // Most students in one class
   maxClassSize: num(process.env.MAX_CLASS_SIZE, 30),
+
+  // Class recordings: kept this many days after the class, and no new recording
+  // starts once this much storage is used (the free Firebase allowance is 5 GB)
+  recordingRetentionDays: num(process.env.RECORDING_RETENTION_DAYS, 30),
+  recordingStorageCapGb: num(process.env.RECORDING_STORAGE_CAP_GB, 4),
 
   // Email goes out through SMTP (backend/mailer.js)
   mailFrom: process.env.MAIL_FROM || process.env.PORTAL_MAIL_FROM || `Silora Academy <${process.env.MAIL_USER || "info@siloraacademy.com"}>`,
+
+  // Login aliases: an email at the left domain signs into the account at the right one
+  // (e.g. info@siloraacademy.in → info@siloraacademy.com). "a=b,c=d"
+  emailDomainAliases: Object.fromEntries(
+    (process.env.EMAIL_DOMAIN_ALIASES ?? "siloraacademy.in=siloraacademy.com")
+      .split(",")
+      .map((p) => p.split("=").map((s) => s.trim().toLowerCase()))
+      .filter(([from, to]) => from && to)
+  ),
 
   // Run scheduled jobs (reminders, publishing, cleanup, backups) in this process
   enableJobs: bool(process.env.ENABLE_JOBS, true),

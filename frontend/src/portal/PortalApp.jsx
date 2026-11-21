@@ -1,14 +1,15 @@
 // ============================================================
 // PORTAL ROUTES – /portal/*
 // ============================================================
-import React, { Suspense, lazy, useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
+import { lazyPage } from "../lazyPage.js";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, can } from "./lib/auth.jsx";
 import { UiProvider, Loading, Empty } from "./ui/index.jsx";
 import { ShieldOff } from "lucide-react";
 import PortalLayout from "./PortalLayout.jsx";
 
-const ClassRoom = lazy(() => import("./pages/ClassRoom.jsx"));
+const ClassRoom = lazyPage(() => import("./pages/ClassRoom.jsx"));
 import { LoginPage, ForgotPasswordPage, ResetPasswordPage, homeFor } from "./pages/AuthPages.jsx";
 import { NotificationsPage, AnnouncementsPage, ProfilePage } from "./pages/SharedPages.jsx";
 import { StudentDashboard, StudentClasses, StudentMaterials, StudentAttendance, StudentProgress } from "./pages/StudentPages.jsx";
@@ -19,6 +20,7 @@ import { AdminClasses, AdminRequests } from "./pages/admin/AdminClasses.jsx";
 import { AdminMaterials, AdminAttendance } from "./pages/admin/AdminContent.jsx";
 import { AdminAnnouncements, AdminNotifications } from "./pages/admin/AdminComms.jsx";
 import { AdminReports, AdminSettings, AdminBackups } from "./pages/admin/AdminSystem.jsx";
+import { AdminRecordings } from "./pages/admin/AdminRecordings.jsx";
 import { MessagesPage, AdminMessagesPage } from "./pages/MessagesPage.jsx";
 
 // The class page loads only when someone opens a class
@@ -122,6 +124,7 @@ export default function PortalApp() {
             <Route path="admin/schedule-requests" element={<Navigate to="/portal/admin/requests" replace />} />
             <Route path="admin/materials" element={A("materials", <AdminMaterials />)} />
             <Route path="admin/attendance" element={A("attendance", <AdminAttendance />)} />
+            <Route path="admin/recordings" element={A("recordings", <AdminRecordings />)} />
             <Route path="admin/messages" element={A("messages", <AdminMessagesPage />)} />
             <Route path="admin/announcements" element={A("announcements", <AdminAnnouncements />)} />
             <Route path="admin/notifications" element={A("notifications", <AdminNotifications />)} />

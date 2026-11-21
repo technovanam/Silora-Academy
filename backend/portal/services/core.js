@@ -46,6 +46,7 @@ export const ADMIN_PERMISSIONS = {
   materials: "Manage all learning materials",
   attendance: "View and correct attendance forms",
   messages: "Read teacher–student messages",
+  recordings: "Watch and delete class recordings",
   announcements: "Create and publish announcements",
   reports: "Activity logs, reports and exports",
   notifications: "Monitor and retry notifications",

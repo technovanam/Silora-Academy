@@ -8,6 +8,11 @@
 //  • Admins with the "messages" permission can read every conversation
 //    (read-only). Reading leaves no trace that teachers or students can see:
 //    unread counts and conversation data are never changed by an admin.
+//  • WhatsApp-style: senders can edit a text message for EDIT_WINDOW_MIN,
+//    "delete for everyone" within DELETE_WINDOW_H, "delete for me" any time,
+//    and clear a chat. Ticks: sent → delivered (the other person's portal
+//    fetched it) → seen (they opened the chat). Admins still see the original
+//    text of edited/deleted messages (marked as such) for safeguarding.
 // Data: conversations/{teacherId__studentId} + subcollection messages,
 //       messageFiles (file → delete date, for the clean-up job).
 // ============================================================================
@@ -24,6 +29,8 @@ import { storeUpload, deleteStored, fileLink, MATERIAL_TYPES } from "../services
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxMessageFileMb * 1024 * 1024, files: 1 } });
 const PAGE = 60;
+const EDIT_WINDOW_MIN = 15;
+const DELETE_WINDOW_H = 48;
 
 const convId = (teacherId, studentId) => `${teacherId}__${studentId}`;
 const convRef = (id) => db.collection(C.conversations).doc(id);
@@ -58,16 +65,26 @@ async function loadConversation(req) {
 }
 
 // ---- Shaping --------------------------------------------------------------------------
-const shapeMessage = (m) => ({
-  id: m.id,
-  senderId: m.senderId,
-  senderRole: m.senderRole,
-  text: m.text || "",
-  createdAt: m.createdAt,
-  file: m.file
-    ? { fileName: m.file.fileName, kind: m.file.kind, size: m.file.size, contentType: m.file.contentType, expired: !!m.file.expired, deleteAt: m.file.deleteAt || null }
-    : null,
-});
+const shapeFile = (f) => (f ? { fileName: f.fileName, kind: f.kind, size: f.size, contentType: f.contentType, expired: !!f.expired, deleteAt: f.deleteAt || null } : null);
+
+/** viewer = req.user. Admins also see what an edited / deleted message originally said. */
+function shapeMessage(m, viewer) {
+  const admin = viewer?.role === "admin";
+  if (!admin && (m.hiddenFor || []).includes(viewer?.id)) return { id: m.id, hidden: true, createdAt: m.createdAt, updatedAt: m.updatedAt || m.createdAt };
+  const deleted = !!m.deletedAt;
+  return {
+    id: m.id,
+    senderId: m.senderId,
+    senderRole: m.senderRole,
+    text: deleted && !admin ? "" : m.text || "",
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt || m.createdAt,
+    editedAt: m.editedAt || null,
+    deleted,
+    file: deleted && !admin ? null : shapeFile(m.file),
+    ...(admin && m.edits?.length ? { edits: m.edits } : {}),
+  };
+}
 
 function shapeConversation(c, viewer, names) {
   const other = viewer.role === "teacher" ? c.studentId : c.teacherId;
@@ -79,8 +96,11 @@ function shapeConversation(c, viewer, names) {
     studentName: names[c.studentId] || "Student",
     otherId: viewer.role === "admin" ? null : other,
     otherName: viewer.role === "admin" ? null : names[other] || (viewer.role === "teacher" ? "Student" : "Teacher"),
-    lastMessage: c.lastMessage || null,
+    lastMessage: viewer.role !== "admin" && (c.clearedAt?.[viewer.id] || "") >= (c.lastAt || "~") ? null : c.lastMessage || null,
     lastAt: c.lastAt || c.createdAt,
+    // Ticks for the viewer's own messages (admins never see or change these)
+    otherReadAt: viewer.role === "admin" ? null : c.readAt?.[other] || null,
+    otherDeliveredAt: viewer.role === "admin" ? null : c.deliveredAt?.[other] || c.readAt?.[other] || null,
     messageCount: c.messageCount || 0,
     // Viewers only ever see their own unread count; admins see none (and change none)
     unread: viewer.role === "admin" ? 0 : c.unread?.[viewer.id] || 0,
@@ -89,16 +109,38 @@ function shapeConversation(c, viewer, names) {
 
 const nameMap = async (ids) => Object.fromEntries(Object.values(await getMany(db, C.users, ids)).map((u) => [u.id, u.name]));
 
-async function pageOfMessages(id, { after, before }) {
-  let q = msgs(id);
-  if (after) q = q.where("createdAt", ">", String(after)).orderBy("createdAt", "asc").limit(200);
-  else {
-    q = q.orderBy("createdAt", "desc");
-    if (before) q = q.where("createdAt", "<", String(before));
-    q = q.limit(PAGE);
+/**
+ * A page of messages (newest PAGE, or older than `before`), or – with `since` – every
+ * message created, edited or deleted after that cursor (used for live polling).
+ */
+async function pageOfMessages(c, viewer, { since, before }) {
+  const cleared = viewer.role === "admin" ? "" : c.clearedAt?.[viewer.id] || "";
+  if (since) {
+    const list = listData(await msgs(c.id).where("updatedAt", ">", String(since)).orderBy("updatedAt", "asc").limit(200).get()).filter((m) => m.createdAt > cleared);
+    const cursor = list.reduce((mx, m) => (m.updatedAt > mx ? m.updatedAt : mx), String(since));
+    return { messages: list.map((m) => shapeMessage(m, viewer)), cursor, hasMore: false };
   }
-  const list = listData(await q.get()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-  return { messages: list.map(shapeMessage), hasMore: !after && list.length === PAGE };
+  let q = msgs(c.id).orderBy("createdAt", "desc");
+  if (before) q = q.where("createdAt", "<", String(before));
+  if (cleared) q = q.where("createdAt", ">", cleared);
+  const raw = listData(await q.limit(PAGE).get()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  const cursor = raw.reduce((mx, m) => ((m.updatedAt || m.createdAt) > mx ? m.updatedAt || m.createdAt : mx), cleared || "0");
+  return { messages: raw.map((m) => shapeMessage(m, viewer)).filter((m) => !m.hidden), cursor, hasMore: raw.length === PAGE };
+}
+
+const lastPreview = (id, m) => ({ id, text: (m.text || "").slice(0, 160), senderId: m.senderId, at: m.createdAt, file: m.file ? m.file.fileName : null, deleted: !!m.deletedAt });
+
+/** Mark conversations as delivered to `userId` (their portal has fetched them). */
+async function markDelivered(docs, userId) {
+  const now = nowIso();
+  await Promise.all(
+    docs
+      .filter((d) => {
+        const c = d.data();
+        return (c.unread?.[userId] || 0) > 0 && (c.deliveredAt?.[userId] || "") < (c.lastAt || "");
+      })
+      .map((d) => d.ref.update({ [`deliveredAt.${userId}`]: now }).catch(() => {}))
+  );
 }
 
 // ============================ TEACHERS & STUDENTS =======================================
@@ -120,7 +162,10 @@ member.get(
 member.get(
   "/messages/conversations",
   ah(async (req, res) => {
-    const list = listData(await db.collection(C.conversations).where("participants", "array-contains", req.user.id).get()).filter((c) => c.messageCount > 0);
+    const qs = await db.collection(C.conversations).where("participants", "array-contains", req.user.id).get();
+    await markDelivered(qs.docs, req.user.id);
+    // "Delete chat" hides a conversation until someone writes in it again
+    const list = listData(qs).filter((c) => c.messageCount > 0 && !(c.removedFor?.[req.user.id] && (c.clearedAt?.[req.user.id] || "") >= (c.lastAt || "")));
     const names = await nameMap(list.flatMap((c) => [c.teacherId, c.studentId]));
     res.json({ conversations: list.map((c) => shapeConversation(c, req.user, names)).sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1)) });
   })
@@ -130,6 +175,7 @@ member.get(
   "/messages/unread",
   ah(async (req, res) => {
     const qs = await db.collection(C.conversations).where("participants", "array-contains", req.user.id).get();
+    await markDelivered(qs.docs, req.user.id);
     res.json({ unread: qs.docs.reduce((n, d) => n + (d.data().unread?.[req.user.id] || 0), 0) });
   })
 );
@@ -158,7 +204,7 @@ member.get(
   ah(async (req, res) => {
     const c = await loadConversation(req);
     const names = await nameMap([c.teacherId, c.studentId]);
-    res.json({ conversation: shapeConversation(c, req.user, names), ...(await pageOfMessages(c.id, req.query)) });
+    res.json({ conversation: shapeConversation(c, req.user, names), ...(await pageOfMessages(c, req.user, req.query)) });
   })
 );
 
@@ -182,15 +228,19 @@ member.post(
       file = { ...stored, deleteAt };
       await db.collection(C.messageFiles).doc(mref.id).set({ conversationId: c.id, messageId: mref.id, path: stored.path, deleteAt, createdAt });
     }
-    const doc = { senderId: req.user.id, senderRole: req.user.role, text, file, createdAt };
+    const doc = { senderId: req.user.id, senderRole: req.user.role, text, file, createdAt, updatedAt: createdAt };
     await mref.set(doc);
     const before = c.unread?.[otherId] || 0;
     await convRef(c.id).update({
-      lastMessage: { text: text.slice(0, 160), senderId: req.user.id, at: createdAt, file: file ? file.fileName : null },
+      lastMessage: lastPreview(mref.id, doc),
       lastAt: createdAt,
       messageCount: FieldValue.increment(1),
       [`unread.${otherId}`]: FieldValue.increment(1),
       [`unread.${req.user.id}`]: 0,
+      // Replying means you have seen everything before it
+      [`readAt.${req.user.id}`]: createdAt,
+      [`removedFor.${req.user.id}`]: FieldValue.delete(),
+      [`removedFor.${otherId}`]: FieldValue.delete(),
     });
     // One notification per burst: only when the other person had nothing unread here
     if (before === 0) {
@@ -202,7 +252,7 @@ member.post(
         refId: c.id,
       }).catch(() => {});
     }
-    res.status(201).json({ message: shapeMessage({ id: mref.id, ...doc }) });
+    res.status(201).json({ message: shapeMessage({ id: mref.id, ...doc }, req.user) });
   })
 );
 
@@ -210,7 +260,88 @@ member.post(
   "/messages/conversations/:id/read",
   ah(async (req, res) => {
     const c = await loadConversation(req);
-    if (c.unread?.[req.user.id]) await convRef(c.id).update({ [`unread.${req.user.id}`]: 0 });
+    const now = nowIso();
+    if (c.unread?.[req.user.id] || (c.readAt?.[req.user.id] || "") < (c.lastAt || "")) {
+      await convRef(c.id).update({ [`unread.${req.user.id}`]: 0, [`readAt.${req.user.id}`]: now, [`deliveredAt.${req.user.id}`]: now });
+    }
+    res.json({ ok: true });
+  })
+);
+
+async function loadMessage(c, req) {
+  const ref = msgs(c.id).doc(str(req.params.mid, 60));
+  const snap = await ref.get();
+  if (!snap.exists) fail(404, "Message not found");
+  return { ref, m: { id: snap.id, ...snap.data() } };
+}
+
+/** Keep the chat-list preview in step when its last message changes. */
+async function syncPreview(c, m) {
+  const lm = c.lastMessage;
+  if (lm && (lm.id === m.id || (!lm.id && lm.at === m.createdAt && lm.senderId === m.senderId))) {
+    await convRef(c.id).update({ lastMessage: lastPreview(m.id, m) });
+  }
+}
+
+// Edit your own text message (within EDIT_WINDOW_MIN)
+member.patch(
+  "/messages/conversations/:id/messages/:mid",
+  ah(async (req, res) => {
+    const c = await loadConversation(req);
+    const { ref, m } = await loadMessage(c, req);
+    if (m.senderId !== req.user.id) fail(403, "You can only edit your own messages");
+    if (m.deletedAt) fail(400, "This message was deleted");
+    if (Date.now() - new Date(m.createdAt).getTime() > EDIT_WINDOW_MIN * 60000) fail(400, `Messages can only be edited within ${EDIT_WINDOW_MIN} minutes of sending`, "edit_window");
+    const text = str(req.body.text, 4000);
+    if (!text && !m.file) fail(400, "A message can't be empty");
+    if (text === (m.text || "")) return res.json({ message: shapeMessage(m, req.user) });
+    const now = nowIso();
+    // Earlier versions are kept for admins only
+    await ref.update({ text, editedAt: now, updatedAt: now, edits: FieldValue.arrayUnion({ text: m.text || "", at: now }) });
+    const next = { ...m, text, editedAt: now, updatedAt: now };
+    await syncPreview(c, next);
+    res.json({ message: shapeMessage(next, req.user) });
+  })
+);
+
+// Delete: ?for=everyone (own message, within DELETE_WINDOW_H) or ?for=me (any message, any time)
+member.delete(
+  "/messages/conversations/:id/messages/:mid",
+  ah(async (req, res) => {
+    const c = await loadConversation(req);
+    const { ref, m } = await loadMessage(c, req);
+    const now = nowIso();
+    if (req.query.for === "everyone") {
+      if (m.senderId !== req.user.id) fail(403, "You can only delete your own messages for everyone");
+      if (!m.deletedAt) {
+        if (Date.now() - new Date(m.createdAt).getTime() > DELETE_WINDOW_H * 3600000) fail(400, `Messages can only be deleted for everyone within ${DELETE_WINDOW_H} hours of sending`, "delete_window");
+        // The file is removed at once; the text stays visible to admins only (marked deleted)
+        if (m.file?.path) {
+          await deleteStored([m.file.path]);
+          await db.collection(C.messageFiles).doc(m.id).delete().catch(() => {});
+        }
+        await ref.update({ deletedAt: now, deletedBy: req.user.id, updatedAt: now, ...(m.file ? { "file.path": null, "file.expired": true } : {}) });
+        await syncPreview(c, { ...m, deletedAt: now });
+      }
+    } else {
+      await ref.update({ hiddenFor: FieldValue.arrayUnion(req.user.id), updatedAt: now });
+    }
+    res.json({ ok: true });
+  })
+);
+
+// Clear the chat for yourself; { remove: true } also hides it from your list until a new message
+member.post(
+  "/messages/conversations/:id/clear",
+  ah(async (req, res) => {
+    const c = await loadConversation(req);
+    const now = nowIso();
+    await convRef(c.id).update({
+      [`clearedAt.${req.user.id}`]: now,
+      [`unread.${req.user.id}`]: 0,
+      [`readAt.${req.user.id}`]: now,
+      ...(req.body?.remove ? { [`removedFor.${req.user.id}`]: true } : {}),
+    });
     res.json({ ok: true });
   })
 );
@@ -218,6 +349,7 @@ member.post(
 async function linkFor(c, messageId, download) {
   const snap = await msgs(c.id).doc(messageId).get();
   if (!snap.exists) fail(404, "Message not found");
+  if (snap.data().deletedAt) fail(410, "This message was deleted", "deleted");
   const f = snap.data().file;
   if (!f) fail(404, "This message has no file");
   if (f.expired || !f.path) fail(410, `Files are deleted after ${config.messageFileRetentionDays} days`, "expired");
@@ -253,8 +385,8 @@ adminR.get(
     const c = await loadConversation(req);
     const names = await nameMap([c.teacherId, c.studentId]);
     // Recorded for other admins only (audit log) – nothing changes for the teacher or student
-    if (!req.query.after && !req.query.before) await audit(req, "messages.view", { targetType: "conversation", targetId: c.id, summary: `Viewed messages between ${names[c.teacherId] || "teacher"} and ${names[c.studentId] || "student"}` });
-    res.json({ conversation: shapeConversation(c, req.user, names), ...(await pageOfMessages(c.id, req.query)) });
+    if (!req.query.since && !req.query.before) await audit(req, "messages.view", { targetType: "conversation", targetId: c.id, summary: `Viewed messages between ${names[c.teacherId] || "teacher"} and ${names[c.studentId] || "student"}` });
+    res.json({ conversation: shapeConversation(c, req.user, names), ...(await pageOfMessages(c, req.user, req.query)) });
   })
 );
 
