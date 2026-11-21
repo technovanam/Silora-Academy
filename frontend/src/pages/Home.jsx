@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight, ArrowUpRight, Star, CalendarClock, BookOpenCheck, LifeBuoy, ClipboardList, Users, GraduationCap,
-  Video, FolderOpen, ClipboardCheck, BellRing, LogIn, ShieldCheck, BookOpen, TrendingUp,
+  Video, FolderOpen, ClipboardCheck, BellRing, LogIn, ShieldCheck, BookOpen, TrendingUp, Quote,
 } from "lucide-react";
 import { testimonials } from "../data/testimonials";
 import { BOARDS } from "../data/site";
@@ -79,8 +79,9 @@ const Stars = ({ n = 5, className = "h-4 w-4" }) => (
 );
 
 const TestimonialCard = ({ quote, name, role, rating }) => (
-  <figure className="mx-2.5 flex w-[320px] shrink-0 flex-col rounded-3xl border border-line bg-white p-6 sm:w-[380px] sm:p-7">
-    <Stars n={rating} />
+  <figure className="mx-2.5 flex w-[300px] shrink-0 flex-col rounded-3xl border border-line bg-white p-6 sm:w-[360px] sm:p-7">
+    {/* Only show stars when a real rating was given */}
+    {rating ? <Stars n={rating} /> : <Quote className="h-6 w-6 fill-brand/25 text-brand" aria-hidden="true" />}
     <blockquote className="mt-4 flex-1 text-[15px] leading-relaxed text-slate-600">“{quote}”</blockquote>
     <figcaption className="mt-6 flex items-center gap-3">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-navy text-sm font-semibold text-white">
