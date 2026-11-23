@@ -4,7 +4,7 @@
 // ============================================================================
 import { Router } from "express";
 import { db, C, BACKUP_COLLECTIONS } from "../firebase.js";
-import { ah, fail, listData, toCsv, getMany } from "../util.js";
+import { ah, fail, listData, toCsv, getMany, plural } from "../util.js";
 import { requirePerm, requireSuperAdmin } from "../middleware.js";
 import { getSettings, saveSettings, DEFAULT_SETTINGS, usersByRole, audit } from "../services/core.js";
 import { computeAlerts } from "../services/alerts.js";
@@ -261,7 +261,7 @@ router.post(
   requirePerm("backups"),
   ah(async (req, res) => {
     const b = await createBackup(req.user.name);
-    await audit(req, "backup.create", { targetType: "backup", targetId: b.id, summary: `Created backup (${b.docs} records)` });
+    await audit(req, "backup.create", { targetType: "backup", targetId: b.id, summary: `Created backup (${plural(b.docs, "record")})` });
     res.status(201).json({ backup: b });
   })
 );
@@ -280,7 +280,7 @@ router.post(
     } catch (e) {
       fail(e.status || 500, e.message);
     }
-    await audit(req, "backup.restore", { targetType: "backup", targetId: req.params.id, summary: `Restored backup ${req.params.id} (${collections.length} collections). Safety backup: ${safety.id}`, meta: result });
+    await audit(req, "backup.restore", { targetType: "backup", targetId: req.params.id, summary: `Restored backup ${req.params.id} (${plural(collections.length, "collection")}). Safety backup: ${safety.id}`, meta: result });
     res.json({ ok: true, ...result, safetyBackup: safety.id });
   })
 );

@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, Repeat, Users, Video } from "lucide-react";
 import { api } from "../lib/api.js";
-import { fmtDay, fmtTime, fromLocalInput, toLocalInput } from "../lib/format.js";
+import { fmtDay, fmtTime, fromLocalInput, toLocalInput, plural } from "../lib/format.js";
 import { Badge, Button, Dialog, Field, Input, Notice, Select, Textarea, cx, useUi } from "../ui/index.jsx";
 
 export const MAX_GROUP = 30; // same as MAX_CLASS_SIZE on the backend
@@ -182,7 +182,7 @@ export function WeekCalendar({ weekStart, onWeekChange, meetings, onSelect, show
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted">
-            {inWeek.filter((m) => m.status !== "cancelled").length} class{inWeek.length === 1 ? "" : "es"}
+            {plural(inWeek.filter((m) => m.status !== "cancelled").length, "class", "classes")}
           </span>
           <Button size="sm" variant="outline" onClick={() => onWeekChange(mondayOf())}>
             Today

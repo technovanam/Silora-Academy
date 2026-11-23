@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Download, Eye, FolderOpen, Heart, History, Megaphone, Sparkles, Star, TrendingUp } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
-import { fmtDate, fmtDateTime, fmtDay, fmtSize, fmtTime, fmtWeek, fromNow } from "../lib/format.js";
+import { fmtDate, fmtDateTime, fmtDay, fmtSize, fmtTime, fmtWeek, fromNow, plural } from "../lib/format.js";
 import { Badge, Button, Card, CardTitle, Empty, ErrorBox, Field, Loading, Notice, PageHeader, Progress, SearchInput, Segmented, Select, StatCard, Textarea, Input, cx, useAsync, useUi } from "../ui/index.jsx";
 import { ClassRow, JoinButton, classState, useNow } from "../components/classes.jsx";
 import { FileIcon, PreviewDialog, downloadMaterial, markMaterialOpened } from "../components/materials.jsx";
@@ -101,7 +101,7 @@ export function StudentDashboard() {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-navy">Learning progress</p>
                   <p className="text-sm text-muted">
-                    {data.progress.completed} of {data.progress.total} lessons completed
+                    {data.progress.completed} of {plural(data.progress.total, "lesson")} completed
                   </p>
                   <div className="mt-3 flex items-center gap-3">
                     <Progress value={data.progress.percent} tone="blue" className="flex-1" />
@@ -482,7 +482,7 @@ export function StudentProgress() {
                 <div className="mb-1.5 flex justify-between text-sm">
                   <span className="font-semibold text-navy">{s.subject}</span>
                   <span className="text-muted">
-                    {s.completed}/{s.total} lessons · {s.avg}%
+                    {s.completed}/{s.total} {s.total === 1 ? "lesson" : "lessons"} · {s.avg}%
                   </span>
                 </div>
                 <Progress value={s.avg} tone="blue" />

@@ -4,7 +4,7 @@ import { Bell, BellOff, CheckCheck, KeyRound, Laptop, Mail, Megaphone, Pin, Shie
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { enablePush } from "../lib/firebase.js";
-import { fmtDateTime, fromNow, roleLabel } from "../lib/format.js";
+import { fmtDateTime, fromNow, roleLabel, plural } from "../lib/format.js";
 import { Avatar, Badge, Button, Card, CardTitle, Empty, ErrorBox, Field, Loading, Notice, PageHeader, Segmented, Toggle, cx, useAsync, useUi } from "../ui/index.jsx";
 import { PasswordInput } from "./AuthPages.jsx";
 
@@ -237,7 +237,7 @@ export function ProfilePage() {
           </Card>
 
           <Card>
-            <CardTitle icon={ShieldCheck} title="Recent sign-ins" subtitle={`You're signed out automatically after ${settings?.sessionTimeoutMin || 30} minutes of inactivity.`} />
+            <CardTitle icon={ShieldCheck} title="Recent sign-ins" subtitle={`You're signed out automatically after ${plural(settings?.sessionTimeoutMin || 30, "minute")} of inactivity.`} />
             {activity.loading ? (
               <Loading />
             ) : (

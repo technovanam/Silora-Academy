@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { BellRing, Eye, Mail, Megaphone, MoreHorizontal, Pencil, Pin, Plus, RefreshCw, Smartphone, Timer, Trash2, Monitor } from "lucide-react";
 import { api } from "../../lib/api.js";
-import { fmtDateTime, fromLocalInput, fromNow, toLocalInput } from "../../lib/format.js";
+import { fmtDateTime, fromLocalInput, fromNow, toLocalInput, plural } from "../../lib/format.js";
 import { Badge, Button, Card, Checkbox, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, PageHeader, Progress, SearchInput, Segmented, Select, StatCard, Table, Textarea, cx, useAsync, useUi } from "../../ui/index.jsx";
 
 const PRIORITY = [
@@ -257,7 +257,7 @@ export function AdminNotifications() {
   const st = data?.stats;
   return (
     <>
-      <PageHeader title="Notification delivery" subtitle={`Every notification with its in-app, email and push status. Failed channels are retried automatically up to ${data?.maxAttempts || 3} times.`} actions={<Button variant="outline" icon={RefreshCw} onClick={() => reload()}>Refresh</Button>} />
+      <PageHeader title="Notification delivery" subtitle={`Every notification with its in-app, email and push status. Failed channels are retried automatically up to ${plural(data?.maxAttempts || 3, "time")}.`} actions={<Button variant="outline" icon={RefreshCw} onClick={() => reload()}>Refresh</Button>} />
       {st && (
         <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={BellRing} label="Sent" value={st.total} hint={`${st.read} read in-app`} />
@@ -299,15 +299,17 @@ export function AdminNotifications() {
         ) : (
           <Table
             rows={list}
+            pageSize={25}
+            minWidth="min-w-[920px]"
             onRowClick={setDetail}
             empty={<Empty icon={BellRing} title="No notifications in this period" />}
             columns={[
-              { key: "createdAt", label: "Sent", render: (n) => <span className="whitespace-nowrap text-sm">{fmtDateTime(n.createdAt)}</span> },
-              { key: "user", label: "Recipient", render: (n) => <span><span className="block font-medium text-navy">{n.userName}</span><span className="text-xs capitalize text-muted">{n.userRole}</span></span> },
-              { key: "title", label: "Notification", render: (n) => <span><span className="block text-xs text-slate-400">{n.typeLabel}</span><span className="line-clamp-1">{n.title}</span></span> },
-              { key: "ch", label: "Channels", render: (n) => <span className="flex flex-wrap gap-2"><Channel icon={Monitor} c={n.channels?.inApp} /><Channel icon={Mail} c={n.channels?.email} /><Channel icon={Smartphone} c={n.channels?.push} /></span> },
-              { key: "read", label: "Read", render: (n) => (n.read ? <Badge tone="green">Read</Badge> : <Badge>Unread</Badge>) },
-              { key: "x", label: "", render: (n) => (["failed", "partial"].includes(n.status) ? <Button size="xs" variant="outline" icon={RefreshCw} onClick={(e) => { e.stopPropagation(); retry(n); }}>Retry</Button> : null) },
+              { key: "createdAt", label: "Sent", headClass: "w-[170px]", className: "whitespace-nowrap", render: (n) => <span className="text-sm">{fmtDateTime(n.createdAt)}</span> },
+              { key: "user", label: "Recipient", headClass: "w-[190px]", render: (n) => <span className="block max-w-[190px]"><span className="block truncate font-medium text-navy" title={n.userName}>{n.userName}</span><span className="block text-xs capitalize text-muted">{n.userRole}</span></span> },
+              { key: "title", label: "Notification", render: (n) => <span className="block min-w-[180px]"><span className="block text-xs text-slate-400">{n.typeLabel}</span><span className="line-clamp-1" title={n.title}>{n.title}</span></span> },
+              { key: "ch", label: "Channels", headClass: "w-[300px]", className: "whitespace-nowrap", render: (n) => <span className="flex items-center gap-3"><Channel icon={Monitor} c={n.channels?.inApp} /><Channel icon={Mail} c={n.channels?.email} /><Channel icon={Smartphone} c={n.channels?.push} /></span> },
+              { key: "read", label: "Read", headClass: "w-[90px]", className: "whitespace-nowrap", render: (n) => (n.read ? <Badge tone="green">Read</Badge> : <Badge>Unread</Badge>) },
+              { key: "x", label: "", headClass: "w-[100px]", className: "text-right", render: (n) => (["failed", "partial"].includes(n.status) ? <Button size="xs" variant="outline" icon={RefreshCw} onClick={(e) => { e.stopPropagation(); retry(n); }}>Retry</Button> : null) },
             ]}
           />
         )}

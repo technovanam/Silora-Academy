@@ -19,6 +19,8 @@ export const fail = (status, message, code) => {
 export const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 export const nowIso = () => new Date().toISOString();
+// "1 class", "2 classes": a count with the right singular/plural word
+export const plural = (n, one, many = `${one}s`) => `${n ?? 0} ${Number(n) === 1 ? one : many}`;
 export const addDays = (d, n) => new Date(new Date(d).getTime() + n * 86400000);
 export const addMinutes = (d, n) => new Date(new Date(d).getTime() + n * 60000);
 

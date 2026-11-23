@@ -147,7 +147,7 @@ const Home = () => {
           subtitle="From personalized learning paths to interactive sessions, every feature is designed to make your learning experience simple, engaging, and confidence-building."
         />
 
-        <div className="mt-12 grid gap-4 md:grid-cols-2 lg:mt-16 lg:grid-cols-4 lg:grid-rows-2">
+        <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2 lg:mt-16 lg:grid-cols-4 lg:grid-rows-2">
           {/* Large image card */}
           <Reveal className="group relative min-h-[320px] overflow-hidden rounded-[2rem] md:col-span-2 lg:row-span-2">
             <img

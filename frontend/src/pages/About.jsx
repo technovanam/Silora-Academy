@@ -89,23 +89,9 @@ const APPROACH = [
 const TEAM = [
   {
     name: "Sameeha",
-    role: "Founder & CEO · Biology & Physics Educator",
-    bio: "Enthusiastic about breaking down intricate Biology and Physics topics, empowering learners to thrive academically.",
+    role: "Founder & CEO · Physics Educator",
+    bio: "Enthusiastic about breaking down intricate Physics topics, empowering learners to thrive academically.",
     img: "https://res.cloudinary.com/dnmvriw3e/image/upload/v1764746980/01-removebg-preview_2_lqhbjc.jpg",
-    imgClass: "",
-  },
-  {
-    name: "Haseeba",
-    role: "Head of Mathematics Faculty",
-    bio: "Passionate mathematician who transforms abstract formulas into clear insights, inspiring confidence in every pupil.",
-    img: null,
-    imgClass: "",
-  },
-  {
-    name: "Joshnitha",
-    role: "Head of Computer Science Faculty",
-    bio: "Innovative coder who unravels intricate algorithms, igniting curiosity and empowering future technologists.",
-    img: null,
     imgClass: "",
   },
   {
@@ -113,6 +99,13 @@ const TEAM = [
     role: "Head of SST Faculty",
     bio: "Visionary historian weaving cultural narratives through immersive explorations, sparking critical thinking and lifelong appreciation.",
     img: "https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_400/v1764439337/WhatsApp_Image_2025-11-29_at_09.58.43_e4cd9578_axbas2.jpg",
+    imgClass: "",
+  },
+  {
+    name: "Thaslima",
+    role: "English Educator",
+    bio: "Brings language and literature to life, helping students read, write and speak English with confidence.",
+    img: "/Thaslima.jpeg",
     imgClass: "",
   },
 ];
@@ -285,7 +278,7 @@ const About = () => {
           title="Meet the people behind Silora"
           subtitle="Our dedicated team of educators and professionals is committed to providing the best learning experience for every student."
         />
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:mt-16 lg:grid-cols-4">
+        <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-2 lg:mt-16 lg:grid-cols-3">
           {TEAM.map((m, i) => (
             <Reveal key={m.name} delay={i * 80} className="group relative overflow-hidden rounded-[2rem] bg-slate-200">
               <div className="aspect-[3/4] overflow-hidden">

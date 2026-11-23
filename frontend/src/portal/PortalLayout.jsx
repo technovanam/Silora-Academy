@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  Bell, BookOpen, CalendarDays, CalendarClock, ChartColumn, ClipboardCheck, Database, FolderOpen, GraduationCap, LayoutDashboard,
+  Bell, BookOpen, CalendarDays, CalendarClock, CalendarRange, ChartColumn, ClipboardCheck, Database, FolderOpen, GraduationCap, LayoutDashboard,
   KeyRound, LogOut, MessagesSquare, ChevronRight, ChevronDown, PanelLeftClose, PanelLeftOpen, Megaphone, Menu, Settings, Video, ShieldCheck, Siren, TrendingUp, User, Users, X, BellRing, CheckCheck, ExternalLink,
 } from "lucide-react";
 import { SITE } from "../data/site";
@@ -61,6 +61,7 @@ export function navFor(user) {
     return [
       { to: "/portal/student", label: "Dashboard", icon: LayoutDashboard, end: true },
       { to: "/portal/student/classes", label: "My classes", icon: CalendarDays },
+      { to: "/portal/student/timetable", label: "Timetable", icon: CalendarRange },
       { to: "/portal/student/materials", label: "Materials", icon: FolderOpen },
       { to: "/portal/student/recordings", label: "Recordings", icon: Video },
       { to: "/portal/student/attendance", label: "Weekly attendance", icon: ClipboardCheck },
@@ -72,6 +73,7 @@ export function navFor(user) {
     return [
       { to: "/portal/teacher", label: "Dashboard", icon: LayoutDashboard, end: true },
       { to: "/portal/teacher/calendar", label: "Calendar & classes", icon: CalendarDays },
+      { to: "/portal/teacher/timetable", label: "Timetable", icon: CalendarRange },
       { to: "/portal/teacher/students", label: "My students", icon: GraduationCap },
       { to: "/portal/teacher/materials", label: "Materials", icon: FolderOpen },
       { to: "/portal/teacher/requests", label: "Schedule requests", icon: CalendarClock },
@@ -86,6 +88,7 @@ export function navFor(user) {
     { to: "/portal/admin/admins", label: "Admins & access", icon: ShieldCheck, superOnly: true },
     { section: "Teaching" },
     { to: "/portal/admin/classes", label: "Classes", icon: CalendarDays, perm: "classes" },
+    { to: "/portal/admin/timetable", label: "Timetable", icon: CalendarRange, perm: "classes" },
     { to: "/portal/admin/requests", label: "Schedule requests", icon: CalendarClock, perm: "classes" },
     { to: "/portal/admin/materials", label: "Materials", icon: FolderOpen, perm: "materials" },
     { to: "/portal/admin/attendance", label: "Attendance", icon: ClipboardCheck, perm: "attendance" },

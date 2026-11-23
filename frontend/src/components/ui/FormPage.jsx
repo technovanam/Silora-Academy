@@ -21,11 +21,11 @@ const FormPage = ({ image, imagePosition = "center", eyebrow, title, highlight, 
 
       {/* Tablet & desktop: exactly one screen tall (minus the 64/72px header).
           Desktop: two columns; the photo takes whatever height is left and hides on short screens. */}
-      <Container className="grid content-center gap-8 py-10 md:min-h-[calc(100svh-64px)] md:gap-5 md:py-4 lg:h-[calc(100svh-72px)] lg:min-h-[600px] lg:grid-cols-12 lg:items-stretch lg:gap-12 lg:py-6">
+      <Container className="grid grid-cols-1 content-center gap-8 py-10 md:min-h-[calc(100svh-64px)] md:gap-5 md:py-4 lg:h-[calc(100svh-72px)] lg:min-h-[600px] lg:grid-cols-12 lg:items-stretch lg:gap-12 lg:py-6">
         {/* Intro */}
-        <div className="flex min-h-0 flex-col lg:col-span-5">
+        <div className="flex min-h-0 min-w-0 flex-col lg:col-span-5">
           <Eyebrow className="w-fit">{eyebrow}</Eyebrow>
-          <h1 className="mt-4 text-4xl font-bold leading-[1.05] tracking-tight text-navy sm:text-5xl md:text-[2.75rem] lg:text-[clamp(2.25rem,6vh,3rem)]">
+          <h1 className="mt-4 break-words text-[2rem] min-[340px]:text-4xl font-bold leading-[1.05] tracking-tight text-navy sm:text-5xl md:text-[2.75rem] lg:text-[clamp(2.25rem,6vh,3rem)]">
             {title} {highlight && <span className="text-brand-hover">{highlight}</span>}
           </h1>
           <p className="mt-3 max-w-lg text-base leading-relaxed text-muted sm:text-lg lg:text-[clamp(0.95rem,2.2vh,1.125rem)]">{subtitle}</p>

@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { Clock, Download, HardDrive, Play, Trash2, Video } from "lucide-react";
 import { api } from "../../lib/api.js";
-import { fmtDateTime, fmtSize } from "../../lib/format.js";
+import { fmtDateTime, fmtSize, plural } from "../../lib/format.js";
 import { Badge, Button, Card, Dialog, Empty, ErrorBox, IconButton, Loading, PageHeader, Progress, SearchInput, StatCard, Table, useAsync, useUi } from "../../ui/index.jsx";
 
 const dur = (s) => {
@@ -56,7 +56,7 @@ export function AdminRecordings() {
   const cap = data?.capBytes || 1;
   return (
     <>
-      <PageHeader title="Class recordings" subtitle={`Recorded by teachers during live classes. Each recording is deleted automatically ${data?.retentionDays ?? 30} days after the class.`} />
+      <PageHeader title="Class recordings" subtitle={`Recorded by teachers during live classes. Each recording is deleted automatically ${plural(data?.retentionDays ?? 30, "day")} after the class.`} />
       <ErrorBox error={error} onRetry={reload} />
       {data && (
         <div className="mb-4 grid gap-4 sm:grid-cols-3">

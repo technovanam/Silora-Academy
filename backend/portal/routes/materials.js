@@ -7,7 +7,7 @@ import { Router } from "express";
 import multer from "multer";
 import config from "../config.js";
 import { db, C } from "../firebase.js";
-import { ah, fail, nowIso, str, toIso, listData, getMany, verifyToken } from "../util.js";
+import { ah, fail, nowIso, str, toIso, listData, getMany, verifyToken, plural } from "../util.js";
 import { requireRole } from "../middleware.js";
 import { hasPerm, logActivity, audit } from "../services/core.js";
 import { notify, notifyAdmins } from "../services/notify.js";
@@ -279,7 +279,7 @@ router.post(
     const studentIds = await validateAssignees(req.user, m.teacherId, req.body.studentIds);
     await db.collection(C.materials).doc(m.id).update({ studentIds, updatedAt: nowIso() });
     if (isLive(m)) await publishMaterial({ ...m, studentIds }, studentIds);
-    await logActivity(req, "material.assign", { targetType: "material", targetId: m.id, summary: `Assigned "${m.title}" to ${studentIds.length} student(s)` });
+    await logActivity(req, "material.assign", { targetType: "material", targetId: m.id, summary: `Assigned "${m.title}" to ${plural(studentIds.length, "student")}` });
     res.json({ ok: true });
   })
 );

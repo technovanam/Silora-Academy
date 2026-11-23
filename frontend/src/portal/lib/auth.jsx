@@ -6,6 +6,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth";
 import { auth } from "./firebase.js";
 import { api, PORTAL_API } from "./api.js";
+import { plural } from "./format.js";
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -95,7 +96,7 @@ export function AuthProvider({ children }) {
     const timer = setInterval(() => {
       // Don't time out while a class is in progress
       if (document.body.dataset.inClass === "1") return mark();
-      if (Date.now() - readLast() > timeoutMin * 60000) logout(`You were signed out after ${timeoutMin} minutes of inactivity.`);
+      if (Date.now() - readLast() > timeoutMin * 60000) logout(`You were signed out after ${plural(timeoutMin, "minute")} of inactivity.`);
     }, 20000);
     return () => {
       events.forEach((ev) => window.removeEventListener(ev, mark));

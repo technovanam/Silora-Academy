@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useAuth, can } from "../../lib/auth.jsx";
-import { fmtDate, fmtDateTime, fmtGrade, fmtLastSeen, fmtName, fmtPhone } from "../../lib/format.js";
+import { fmtDate, fmtDateTime, fmtGrade, fmtLastSeen, fmtName, fmtPhone, plural } from "../../lib/format.js";
 import {
   Avatar, Badge, Button, Card, CardTitle, Checkbox, Dialog, Empty, ErrorBox, Field, Input, Loading, Notice, PageHeader, SearchInput, Segmented, Select, StatCard, Table, Toggle, useAsync, useUi,
 } from "../../ui/index.jsx";
@@ -586,7 +586,7 @@ export function AdminAdminsPage() {
           onRowClick={(a) => setViewing(a)}
           columns={[
             { key: "name", label: "Admin", render: (a) => <span className="flex items-center gap-3"><Avatar name={a.name} size="sm" /><span className="whitespace-nowrap font-semibold text-navy">{fmtName(a.name)}</span>{a.id === me.id && <Badge>You</Badge>}</span> },
-            { key: "role", label: "Access", className: "whitespace-nowrap", render: (a) => (a.superAdmin ? <Badge tone="gold">Super admin</Badge> : <span className="text-sm text-muted">{granted(a).length} of {keys.length} permissions</span>) },
+            { key: "role", label: "Access", className: "whitespace-nowrap", render: (a) => (a.superAdmin ? <Badge tone="gold">Super admin</Badge> : <span className="text-sm text-muted">{granted(a).length} of {plural(keys.length, "permission")}</span>) },
             {
               key: "perms",
               label: "Permissions",
@@ -641,7 +641,7 @@ export function AdminAdminsPage() {
         open={!!viewing}
         onClose={() => setViewing(null)}
         title={viewing ? fmtName(viewing.name) : ""}
-        subtitle={viewing ? (viewing.superAdmin ? "Super admin · full access" : `${granted(viewing).length} of ${keys.length} permissions`) : ""}
+        subtitle={viewing ? (viewing.superAdmin ? "Super admin · full access" : `${granted(viewing).length} of ${plural(keys.length, "permission")}`) : ""}
         footer={
           viewing && (
             <>

@@ -23,6 +23,7 @@ import { AdminReports, AdminSettings, AdminBackups } from "./pages/admin/AdminSy
 import { AdminRecordings } from "./pages/admin/AdminRecordings.jsx";
 import { StudentRecordings } from "./pages/StudentRecordings.jsx";
 import { MessagesPage, AdminMessagesPage } from "./pages/MessagesPage.jsx";
+import { AdminTimetable, TeacherTimetable, StudentTimetable } from "./pages/TimetablePages.jsx";
 
 // The class page loads only when someone opens a class
 
@@ -103,6 +104,7 @@ export default function PortalApp() {
 
             <Route path="student" element={S(<StudentDashboard />)} />
             <Route path="student/classes" element={S(<StudentClasses />)} />
+            <Route path="student/timetable" element={S(<StudentTimetable />)} />
             <Route path="student/materials" element={S(<StudentMaterials />)} />
             <Route path="student/recordings" element={S(<StudentRecordings />)} />
             <Route path="student/attendance" element={S(<StudentAttendance />)} />
@@ -110,6 +112,7 @@ export default function PortalApp() {
 
             <Route path="teacher" element={T(<TeacherDashboard />)} />
             <Route path="teacher/calendar" element={T(<TeacherCalendar />)} />
+            <Route path="teacher/timetable" element={T(<TeacherTimetable />)} />
             <Route path="teacher/classes" element={<Navigate to="/portal/teacher/calendar" replace />} />
             <Route path="teacher/students" element={T(<TeacherStudents />)} />
             <Route path="teacher/students/:id" element={T(<TeacherStudentDetail />)} />
@@ -122,6 +125,7 @@ export default function PortalApp() {
             <Route path="admin/admins" element={A(null, <AdminAdminsPage />, true)} />
             <Route path="admin/users/:id" element={A("users", <AdminUserDetail />)} />
             <Route path="admin/classes" element={A("classes", <AdminClasses />)} />
+            <Route path="admin/timetable" element={A("classes", <AdminTimetable />)} />
             <Route path="admin/requests" element={A("classes", <AdminRequests />)} />
             <Route path="admin/schedule-requests" element={<Navigate to="/portal/admin/requests" replace />} />
             <Route path="admin/materials" element={A("materials", <AdminMaterials />)} />

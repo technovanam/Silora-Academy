@@ -4,7 +4,7 @@
 // ============================================================
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Check, CheckCircle2, ChevronDown, Info, Loader2, Search, X, XCircle } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Info, Loader2, Search, X, XCircle } from "lucide-react";
 import { initials } from "../lib/format.js";
 
 export const cx = (...c) => c.filter(Boolean).join(" ");
@@ -685,36 +685,89 @@ export function UiProvider({ children }) {
 
 // ---- Table ------------------------------------------------------------------------------
 /**
- * columns: [{ key, label, render?, className?, hideSm? }]
+ * columns: [{ key, label, render?, className?, headClass? }]
  * Put it in <Card flush> on its own, or pass `bleed` when it sits under a
  * CardTitle inside a normal padded Card (it then stretches to the card edges).
+ * pageSize: show the rows a page at a time with a pagination bar underneath.
+ * minWidth: Tailwind min-width class for the <table> (it scrolls sideways below that).
  */
-export function Table({ columns, rows, rowKey = "id", onRowClick, empty, dense, bleed = false }) {
-  if (!rows?.length) return empty || <Empty title="Nothing here yet" />;
+const PAGE_SIZES = [10, 25, 50, 100];
+export function Table({ columns, rows, rowKey = "id", onRowClick, empty, dense, bleed = false, pageSize, minWidth = "min-w-[640px]" }) {
+  const [size, setSize] = useState(pageSize || 0);
+  const [page, setPage] = useState(0);
+  const count = rows?.length || 0;
+  const pages = size ? Math.max(1, Math.ceil(count / size)) : 1;
+  // A new filter or search gives a different list: go back to the first page
+  useEffect(() => setPage(0), [count, size]);
+  if (!count) return empty || <Empty title="Nothing here yet" />;
+  const p = Math.min(page, pages - 1);
+  const shown = size ? rows.slice(p * size, p * size + size) : rows;
   return (
-    <div className={cx("scrollbar-thin overflow-x-auto", bleed && "-mx-5 -mb-5 sm:-mx-6 sm:-mb-6")}>
-      <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
-        <thead>
-          <tr>
-            {columns.map((c) => (
-              <th key={c.key} className={cx("whitespace-nowrap border-b border-slate-200 bg-slate-50/60 px-4 py-2.5 text-left text-xs font-medium text-slate-500 first:pl-5 last:pr-5 sm:first:pl-6 sm:last:pr-6", c.headClass)}>
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="[&>tr:last-child>td]:border-b-0">
-          {rows.map((r, i) => (
-            <tr key={r[rowKey] ?? i} onClick={onRowClick ? () => onRowClick(r) : undefined} className={cx("transition-colors hover:bg-slate-50", onRowClick && "cursor-pointer")}>
+    <div className={cx(bleed && "-mx-5 -mb-5 sm:-mx-6 sm:-mb-6")}>
+      <div className="scrollbar-thin overflow-x-auto">
+        <table className={cx("w-full border-separate border-spacing-0 text-sm", minWidth)}>
+          <thead>
+            <tr>
               {columns.map((c) => (
-                <td key={c.key} className={cx("border-b border-slate-100 px-4 align-middle text-ink first:pl-5 last:pr-5 sm:first:pl-6 sm:last:pr-6", dense ? "py-2" : "py-3", c.className)}>
-                  {c.render ? c.render(r) : r[c.key] ?? "—"}
-                </td>
+                <th key={c.key} className={cx("whitespace-nowrap border-b border-slate-200 bg-slate-50/60 px-4 py-2.5 text-left text-xs font-medium text-slate-500 first:pl-5 last:pr-5 sm:first:pl-6 sm:last:pr-6", c.headClass)}>
+                  {c.label}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="[&>tr:last-child>td]:border-b-0">
+            {shown.map((r, i) => (
+              <tr key={r[rowKey] ?? i} onClick={onRowClick ? () => onRowClick(r) : undefined} className={cx("transition-colors hover:bg-slate-50", onRowClick && "cursor-pointer")}>
+                {columns.map((c) => (
+                  <td key={c.key} className={cx("border-b border-slate-100 px-4 align-middle text-ink first:pl-5 last:pr-5 sm:first:pl-6 sm:last:pr-6", dense ? "py-2" : "py-3", c.className)}>
+                    {c.render ? c.render(r) : r[c.key] ?? "—"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {size > 0 && count > PAGE_SIZES[0] && <Pager page={p} pages={pages} size={size} count={count} onPage={setPage} onSize={setSize} />}
+    </div>
+  );
+}
+
+function Pager({ page, pages, size, count, onPage, onSize }) {
+  // First, last, and the pages around the current one, with "…" for the gaps
+  const nums = [...new Set([0, pages - 1, page - 1, page, page + 1])].filter((n) => n >= 0 && n < pages).sort((a, b) => a - b);
+  const items = nums.flatMap((n, i) => (i && n - nums[i - 1] > 1 ? ["gap" + n, n] : [n]));
+  const btn = "inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-sm font-medium transition disabled:pointer-events-none disabled:opacity-40";
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span>
+          Showing <span className="font-medium text-ink">{page * size + 1}–{Math.min(count, page * size + size)}</span> of <span className="font-medium text-ink">{count}</span>
+        </span>
+        <label className="flex items-center gap-2">
+          Rows per page
+          <select value={size} onChange={(e) => onSize(Number(e.target.value))} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-sm text-ink focus:border-brand focus:outline-none">
+            {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </div>
+      <nav aria-label="Pages" className="flex items-center gap-1 self-end sm:self-auto">
+        <button type="button" className={cx(btn, "text-slate-600 hover:bg-slate-100")} disabled={page === 0} onClick={() => onPage(page - 1)} aria-label="Previous page">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        {items.map((n) =>
+          typeof n === "string" ? (
+            <span key={n} className="px-1 text-slate-400">…</span>
+          ) : (
+            <button key={n} type="button" aria-current={n === page ? "page" : undefined} className={cx(btn, n === page ? "bg-navy text-white" : "text-slate-600 hover:bg-slate-100")} onClick={() => onPage(n)}>
+              {n + 1}
+            </button>
+          )
+        )}
+        <button type="button" className={cx(btn, "text-slate-600 hover:bg-slate-100")} disabled={page >= pages - 1} onClick={() => onPage(page + 1)} aria-label="Next page">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </nav>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, BellRing, CalendarClock, CalendarDays, CalendarPlus, ClipboardCheck, FileX, GraduationCap, Siren, UserPlus, UserX, Users } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useAuth, can } from "../../lib/auth.jsx";
-import { fmtWeek } from "../../lib/format.js";
+import { fmtWeek, plural } from "../../lib/format.js";
 import { Badge, Button, Card, CardTitle, Empty, ErrorBox, Loading, PageHeader, StatCard, cx, useAsync } from "../../ui/index.jsx";
 import { BarList, ColumnChart, Legend, LineChart, Meter, SERIES } from "../../components/charts.jsx";
 import { ClassRow, JoinButton } from "../../components/classes.jsx";
@@ -109,7 +109,7 @@ export function AdminDashboard() {
           <p className="mb-5 text-[13px] text-slate-500">This week</p>
           <div className="space-y-6">
             {s.attendanceExpected !== null && <Meter label="Attendance forms submitted" value={s.attendanceSubmitted} total={s.attendanceExpected} hint={fmtWeek(weekStart())} color={SERIES.aqua} />}
-            <Meter label="Materials opened by students" value={ch.materials?.opened || 0} total={ch.materials?.assigned || 0} hint={`${s.materials} materials in the library`} />
+            <Meter label="Materials opened by students" value={ch.materials?.opened || 0} total={ch.materials?.assigned || 0} hint={`${plural(s.materials, "material")} in the library`} />
             <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
               <div>
                 <p className="text-[13px] font-medium text-slate-500">Sign-ins (24h)</p>
@@ -161,7 +161,7 @@ export function AdminDashboard() {
         {/* Upcoming classes */}
         {canClasses && (
           <Card className="xl:col-span-2">
-            <CardTitle title="Next 7 days" subtitle={`${data.perDay.reduce((a, d) => a + d.count, 0)} classes scheduled`} action={<Link to="/portal/admin/classes" className="text-sm font-semibold text-slate-600 hover:text-navy">View calendar</Link>} />
+            <CardTitle title="Next 7 days" subtitle={`${plural(data.perDay.reduce((a, d) => a + d.count, 0), "class", "classes")} scheduled`} action={<Link to="/portal/admin/classes" className="text-sm font-semibold text-slate-600 hover:text-navy">View calendar</Link>} />
             <ColumnChart data={data.perDay} series={[{ key: "count", label: "Classes", color: SERIES.blue }]} xLabel={(d) => (d.date === todayStr ? "Today" : new Date(`${d.date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short" }))} tipTitle={(d) => new Date(`${d.date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })} height={150} highlight={(d) => d.date === todayStr} />
             <div className="mt-5 space-y-3">
               {data.upcoming.length ? (
@@ -190,7 +190,7 @@ export function AdminDashboard() {
 
           {/* Alerts */}
           <Card>
-            <CardTitle title="Alerts" subtitle={`${data.alertCount} need attention`} action={<Link to="/portal/admin/alerts" className="text-sm font-semibold text-slate-600 hover:text-navy">View all</Link>} />
+            <CardTitle title="Alerts" subtitle={`${data.alertCount} ${data.alertCount === 1 ? "needs" : "need"} attention`} action={<Link to="/portal/admin/alerts" className="text-sm font-semibold text-slate-600 hover:text-navy">View all</Link>} />
             <AlertList alerts={data.alerts.slice(0, 4)} compact />
           </Card>
           {can(user, "notifications") && (
@@ -236,7 +236,7 @@ export function AdminAlerts() {
     <>
       <PageHeader
         title="Alerts"
-        subtitle={data ? `Inactive after ${data.settings.inactivityDays} days without sign-in · materials unopened after ${data.settings.unopenedMaterialDays} days · missing weekly attendance. Admins get a daily summary at 9 AM.` : ""}
+        subtitle={data ? `Inactive after ${plural(data.settings.inactivityDays, "day")} without sign-in · materials unopened after ${plural(data.settings.unopenedMaterialDays, "day")} · missing weekly attendance. Admins get a daily summary at 9 AM.` : ""}
         actions={<Button variant="outline" onClick={() => reload()}>Refresh</Button>}
       />
       <ErrorBox error={error} onRetry={reload} />

@@ -4,7 +4,7 @@
 import { Router } from "express";
 import config from "../config.js";
 import { auth, db, C } from "../firebase.js";
-import { ah, fail, nowIso, isEmail, str, normName, normGrade, normPhone, tempPassword, listData, addDays, weekStartOf, shiftWeek } from "../util.js";
+import { ah, fail, nowIso, isEmail, str, normName, normGrade, normPhone, tempPassword, listData, addDays, weekStartOf, shiftWeek, plural } from "../util.js";
 import { requirePerm, requireSuperAdmin } from "../middleware.js";
 import { adminView, audit, getUser, hasPerm, ADMIN_PERMISSIONS, usersByRole } from "../services/core.js";
 import { notify } from "../services/notify.js";
@@ -385,7 +385,7 @@ router.delete(
     await db.collection(C.users).doc(u.id).update({ active: false, deletedAt: nowIso(), purgeAfter: addDays(new Date(), days).toISOString() });
     await auth.updateUser(u.id, { disabled: true }).catch(() => {});
     await auth.revokeRefreshTokens(u.id).catch(() => {});
-    await audit(req, "user.delete", { targetType: u.role, targetId: u.id, summary: `Deleted ${u.name} (personal data removed after ${days} days)` });
+    await audit(req, "user.delete", { targetType: u.role, targetId: u.id, summary: `Deleted ${u.name} (personal data removed after ${plural(days, "day")})` });
     res.json({ ok: true, purgeAfterDays: days });
   })
 );

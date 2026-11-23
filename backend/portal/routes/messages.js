@@ -24,7 +24,7 @@ import { Router } from "express";
 import multer from "multer";
 import config from "../config.js";
 import { db, C, FieldValue } from "../firebase.js";
-import { ah, fail, nowIso, str, addDays, listData, getMany } from "../util.js";
+import { ah, fail, nowIso, str, addDays, listData, getMany, plural } from "../util.js";
 import { requireRole, requirePerm } from "../middleware.js";
 import { audit } from "../services/core.js";
 import { notify } from "../services/notify.js";
@@ -391,7 +391,7 @@ async function linkFor(c, messageId, download) {
   if (snap.data().deletedAt) fail(410, "This message was deleted", "deleted");
   const f = snap.data().file;
   if (!f) fail(404, "This message has no file");
-  if (f.expired || !f.path) fail(410, `Files are deleted after ${config.messageFileRetentionDays} days`, "expired");
+  if (f.expired || !f.path) fail(410, `Files are deleted after ${plural(config.messageFileRetentionDays, "day")}`, "expired");
   return fileLink({ path: f.path, fileName: f.fileName, contentType: f.contentType, download });
 }
 
@@ -444,7 +444,7 @@ export async function cleanupMessageFiles() {
       .catch(() => {});
     await d.ref.delete();
   }
-  if (qs.size) await db.collection(C.audit).add({ at: nowIso(), actorId: null, actorName: "System", action: "messages.files_expired", targetType: "system", targetId: null, summary: `Deleted ${qs.size} message file(s) older than ${config.messageFileRetentionDays} days` });
+  if (qs.size) await db.collection(C.audit).add({ at: nowIso(), actorId: null, actorName: "System", action: "messages.files_expired", targetType: "system", targetId: null, summary: `Deleted ${plural(qs.size, "message file")} older than ${plural(config.messageFileRetentionDays, "day")}` });
   return qs.size;
 }
 

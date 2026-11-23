@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { saveFile } from "../lib/download.js";
-import { fmtDate, fmtDateTime, fmtSize, fromLocalInput, fromNow, toLocalInput } from "../lib/format.js";
+import { fmtDate, fmtDateTime, fmtSize, fromLocalInput, fromNow, toLocalInput, plural } from "../lib/format.js";
 import { Badge, Button, Card, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, Progress, SearchInput, Select, Table, Textarea, cx, useAsync, useUi } from "../ui/index.jsx";
 
 export const ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.mp3,.m4a,.zip";
@@ -224,7 +224,7 @@ export function MaterialDialog({ open, onClose, onSaved, item, mode, students = 
         if (publishAt) fd.append("publishAt", publishAt);
         fd.append("file", file);
         await api.upload("/materials", fd, setProgress);
-        ui.toast(publishAt ? `Scheduled for ${fmtDateTime(publishAt)}` : f.studentIds.length ? `Shared with ${f.studentIds.length} student(s)` : "Uploaded");
+        ui.toast(publishAt ? `Scheduled for ${fmtDateTime(publishAt)}` : f.studentIds.length ? `Shared with ${plural(f.studentIds.length, "student")}` : "Uploaded");
       }
       onSaved?.();
       onClose();

@@ -41,6 +41,7 @@ export const C = {
   contacts: "contacts", // contact details – admin + the user themselves only
   loginEvents: "loginEvents",
   meetings: "meetings",
+  timetable: "timetable", // weekly Mon–Sun plan (reference only, separate from meetings)
   liveRooms: "liveRooms", // live class: room, people (waiting / in class), signals, chat
   recordings: "recordings", // class recordings (video in Storage under recordings/)
   scheduleRequests: "scheduleRequests",

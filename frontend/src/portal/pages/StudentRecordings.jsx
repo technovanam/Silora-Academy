@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import { Clock, Download, HardDrive, Hourglass, Play, Trash2, Video } from "lucide-react";
 import { api } from "../lib/api.js";
 import { saveFile } from "../lib/download.js";
-import { fmtDate, fmtDateTime, fmtSize, fmtTime } from "../lib/format.js";
+import { fmtDate, fmtDateTime, fmtSize, fmtTime, plural } from "../lib/format.js";
 import { Badge, Button, Card, Dialog, Empty, ErrorBox, IconButton, Loading, Notice, PageHeader, Progress, SearchInput, Select, StatCard, Table, useAsync, useUi } from "../ui/index.jsx";
 
 const dur = (s) => {
@@ -80,7 +80,7 @@ export function StudentRecordings() {
 
   return (
     <>
-      <PageHeader title="Recordings" subtitle={`Recordings of your classes. Watch them again, download them, or delete the ones you don't need. Recordings are kept for ${data?.retentionDays ?? 30} days after the class.`} />
+      <PageHeader title="Recordings" subtitle={`Recordings of your classes. Watch them again, download them, or delete the ones you don't need. Recordings are kept for ${plural(data?.retentionDays ?? 30, "day")} after the class.`} />
       <ErrorBox error={error} onRetry={reload} />
       {data && (
         <div className="mb-4 grid gap-4 sm:grid-cols-3">

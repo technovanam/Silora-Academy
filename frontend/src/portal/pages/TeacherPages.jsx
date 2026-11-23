@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
-import { fmtDate, fmtDateTime, fromNow } from "../lib/format.js";
+import { fmtDate, fmtDateTime, fromNow, plural } from "../lib/format.js";
 import {
   Avatar, Badge, Button, Card, CardTitle, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, PageHeader, Progress, SearchInput,
   Segmented, Select, StatCard, Textarea, cx, useAsync, useUi,
@@ -28,7 +28,7 @@ export function TeacherDashboard() {
     <>
       <PageHeader
         title={`Welcome, ${user.name.split(" ")[0]}`}
-        subtitle={`${s.classesToday ? `You have ${s.classesToday} class${s.classesToday > 1 ? "es" : ""} today.` : "No classes today."} ${s.pendingRequests ? `${s.pendingRequests} schedule request(s) waiting for the admin.` : ""}`}
+        subtitle={`${s.classesToday ? `You have ${plural(s.classesToday, "class", "classes")} today.` : "No classes today."} ${s.pendingRequests ? `${plural(s.pendingRequests, "schedule request")} waiting for the admin.` : ""}`}
         actions={
           <>
             <Link to="/portal/teacher/materials">

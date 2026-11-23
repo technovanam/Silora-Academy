@@ -10,6 +10,7 @@ import adminUsers from "./routes/adminUsers.js";
 import admin from "./routes/admin.js";
 import dashboard from "./routes/dashboard.js";
 import meetings from "./routes/meetings.js";
+import timetable from "./routes/timetable.js";
 import live from "./routes/live.js";
 import recordings from "./routes/recordings.js";
 import materials, { filesRouter } from "./routes/materials.js";
@@ -38,6 +39,7 @@ export function mountPortal(app) {
   api.use(meRouter);
   api.use(dashboard);
   api.use(meetings);
+  api.use(timetable);
   api.use(live);
   api.use(recordings);
   api.use(materials);

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Activity, ChartColumn, Database, Download, FileSpreadsheet, History, LogIn, RotateCcw, Save, ShieldAlert, ShieldCheck, Plus } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useAuth, can } from "../../lib/auth.jsx";
-import { fmtDateTime, fmtSize, fromNow } from "../../lib/format.js";
+import { fmtDateTime, fmtSize, fromNow, plural } from "../../lib/format.js";
 import { Badge, Button, Card, CardTitle, Checkbox, Dialog, Empty, ErrorBox, Field, Input, Loading, Notice, PageHeader, SearchInput, Segmented, StatCard, Table, Toggle, useAsync, useUi } from "../../ui/index.jsx";
 
 const fmtCell = (v) => {
@@ -35,7 +35,7 @@ function ReportsTab() {
       <Card className="min-w-0">
         <CardTitle
           title={report.data?.title || "Report"}
-          subtitle={report.data ? `${report.data.rows.length} rows` : ""}
+          subtitle={report.data ? plural(report.data.rows.length, "row") : ""}
           action={
             <div className="flex flex-wrap items-center gap-2">
               {needsDays && (
@@ -60,7 +60,7 @@ function ReportsTab() {
         {report.loading ? (
           <Loading />
         ) : report.data ? (
-          <Table bleed dense rowKey="__i" rows={report.data.rows.slice(0, 300).map((r, i) => ({ ...r, __i: i }))} columns={report.data.columns.map((c) => ({ key: c.key, label: c.label, render: (r) => <span className="line-clamp-2">{fmtCell(r[c.key])}</span> }))} empty={<Empty title="No data for this report" />} />
+          <Table bleed dense pageSize={25} rowKey="__i" rows={report.data.rows.map((r, i) => ({ ...r, __i: i }))} columns={report.data.columns.map((c) => ({ key: c.key, label: c.label, render: (r) => <span className="line-clamp-2">{fmtCell(r[c.key])}</span> }))} empty={<Empty title="No data for this report" />} />
         ) : null}
         {report.data?.rows.length > 300 && <p className="py-3 text-center text-xs text-muted">Showing the first 300 rows – export CSV for everything.</p>}
       </Card>
@@ -131,7 +131,7 @@ function LogTab({ kind }) {
         </div>
       )}
       <ErrorBox error={error} onRetry={reload} />
-      {loading ? <Loading /> : <Table bleed dense rows={data?.logs || []} columns={columns} empty={<Empty icon={History} title="Nothing logged in this period" />} />}
+      {loading ? <Loading /> : <Table bleed dense pageSize={25} rows={data?.logs || []} columns={columns} empty={<Empty icon={History} title="Nothing logged in this period" />} />}
     </Card>
   );
 }
@@ -267,7 +267,7 @@ export function AdminBackups() {
     setBusy(true);
     try {
       const r = await api.post("/admin/backups");
-      ui.toast(`Backup created (${r.backup.docs} records)`);
+      ui.toast(`Backup created (${plural(r.backup.docs, "record")})`);
       reload(true);
     } catch (e) {
       ui.error(e);

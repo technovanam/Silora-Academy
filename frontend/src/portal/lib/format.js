@@ -91,3 +91,6 @@ export const fmtLastSeen = (v) => {
 };
 
 export const roleLabel ={ admin: "Admin", teacher: "Teacher", student: "Student" };
+
+// "1 class", "2 classes": a count with the right singular/plural word
+export const plural = (n, one, many = `${one}s`) => `${n ?? 0} ${Number(n) === 1 ? one : many}`;

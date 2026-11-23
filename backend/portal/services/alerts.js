@@ -3,7 +3,7 @@
 // stay unopened, and missing weekly attendance. Computed on demand.
 // ============================================================================
 import { db, C } from "../firebase.js";
-import { listData, weekStartOf, shiftWeek } from "../util.js";
+import { listData, weekStartOf, shiftWeek, plural } from "../util.js";
 import { getSettings, usersByRole } from "./core.js";
 
 const daysSince = (iso) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null);
@@ -30,7 +30,7 @@ export async function computeAlerts() {
         type: u.role === "student" ? "student_inactive" : "teacher_inactive",
         severity: d >= settings.inactivityDays * 2 ? "high" : "medium",
         userId: u.id,
-        title: `${u.name} hasn't signed in for ${d} days`,
+        title: `${u.name} hasn't signed in for ${plural(d, "day")}`,
         detail: u.lastLoginAt ? `Last sign-in ${u.lastLoginAt.slice(0, 10)}` : "Never signed in",
         teacherName: u.role === "student" ? tNames[u.teacherId] || "Unassigned" : undefined,
         days: d,
@@ -50,7 +50,7 @@ export async function computeAlerts() {
         type: "material_unopened",
         severity: "low",
         title: `"${m.title}" not opened by ${pending.length} student${pending.length > 1 ? "s" : ""}`,
-        detail: `${pending.map((id) => sNames[id]).slice(0, 5).join(", ")}${pending.length > 5 ? "…" : ""} · published ${d} days ago`,
+        detail: `${pending.map((id) => sNames[id]).slice(0, 5).join(", ")}${pending.length > 5 ? "…" : ""} · published ${plural(d, "day")} ago`,
         teacherName: tNames[m.teacherId] || "",
         materialId: m.id,
         days: d,

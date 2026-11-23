@@ -11,7 +11,7 @@
 import cron from "node-cron";
 import config from "../config.js";
 import { db, C } from "../firebase.js";
-import { nowIso, addMinutes, listData, chunk, weekStartOf } from "../util.js";
+import { nowIso, addMinutes, listData, chunk, weekStartOf, plural } from "../util.js";
 import { getSettings, usersByRole } from "./core.js";
 import { notify, notifyAdmins, retryNotification, MAX_ATTEMPTS } from "./notify.js";
 import { createBackup } from "./backup.js";
@@ -50,7 +50,7 @@ export async function sendClassReminders() {
     await db.collection(C.meetings).doc(m.id).update({ reminderSentAt: nowIso() });
     const mins = Math.max(1, Math.round((new Date(m.startAt) - now) / 60000));
     await notify(m.studentIds || [], { type: "class_reminder", title: `Class starts in ${mins} min: ${m.title}`, body: `Starts at ${fmtTime(m.startAt)}. Tap to join the class.`, link: `/portal/class/${m.id}`, refId: m.id });
-    await notify([m.teacherId], { type: "class_reminder", title: `Your class starts in ${mins} min: ${m.title}`, body: `Starts at ${fmtTime(m.startAt)} with ${(m.studentIds || []).length} student(s).`, link: `/portal/class/${m.id}`, refId: m.id });
+    await notify([m.teacherId], { type: "class_reminder", title: `Your class starts in ${mins} min: ${m.title}`, body: `Starts at ${fmtTime(m.startAt)} with ${plural((m.studentIds || []).length, "student")}.`, link: `/portal/class/${m.id}`, refId: m.id });
   }
   return due.length;
 }

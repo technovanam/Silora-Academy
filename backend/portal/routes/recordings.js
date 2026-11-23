@@ -18,7 +18,7 @@ import crypto from "crypto";
 import { Router } from "express";
 import config from "../config.js";
 import { db, C, bucket, FieldValue } from "../firebase.js";
-import { ah, fail, nowIso, addDays, listData, getMany, str } from "../util.js";
+import { ah, fail, nowIso, addDays, listData, getMany, str, plural } from "../util.js";
 import { requireRole, requirePerm } from "../middleware.js";
 import { audit, logActivity } from "../services/core.js";
 import { canAccess } from "./meetings.js";
@@ -210,7 +210,7 @@ export async function cleanupRecordings() {
     if (r.status === "recording") continue;
     if (r.path) await bucket.file(r.path).delete({ ignoreNotFound: true }).catch(() => {});
     await d.ref.delete();
-    await db.collection(C.audit).add({ at: nowIso(), actorId: null, actorName: "System", action: "recording.auto_delete", targetType: "recording", targetId: d.id, summary: `Auto-deleted the recording of "${d.data().title}" after ${config.recordingRetentionDays} days` });
+    await db.collection(C.audit).add({ at: nowIso(), actorId: null, actorName: "System", action: "recording.auto_delete", targetType: "recording", targetId: d.id, summary: `Auto-deleted the recording of "${d.data().title}" after ${plural(config.recordingRetentionDays, "day")}` });
   }
   return qs.size;
 }
