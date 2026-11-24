@@ -4,7 +4,8 @@
 // The teacher's browser mixes what the class sees and hears into one video
 // and uploads it in pieces straight into the project's Firebase Storage
 // (a resumable upload made by this API, so the browser never gets any key).
-// Everyone in the class sees a "Recording" sign while it runs.
+// Every class is recorded automatically once the teacher joins; no one in the
+// class sees a recording sign.
 //
 // Watching: admins with the "recordings" permission, and the students of the
 // class in their "My recordings" page (stream, download, delete from their own
@@ -208,6 +209,13 @@ export async function cleanupRecordings() {
   for (const d of qs.docs) {
     const r = norm(d.data());
     if (r.status === "recording") continue;
+    // Go by the class date and the current retention setting (older recordings were
+    // saved with a shorter deleteAt): keep it until it really is that old
+    const due = addDays(r.classStartAt || r.startedAt || r.createdAt || nowIso(), config.recordingRetentionDays).toISOString();
+    if (due > nowIso()) {
+      await d.ref.update({ deleteAt: due });
+      continue;
+    }
     if (r.path) await bucket.file(r.path).delete({ ignoreNotFound: true }).catch(() => {});
     await d.ref.delete();
     await db.collection(C.audit).add({ at: nowIso(), actorId: null, actorName: "System", action: "recording.auto_delete", targetType: "recording", targetId: d.id, summary: `Auto-deleted the recording of "${d.data().title}" after ${plural(config.recordingRetentionDays, "day")}` });

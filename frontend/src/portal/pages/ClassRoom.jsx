@@ -303,11 +303,6 @@ function PreJoin({ data, busy, onJoin, user }) {
               {fmtTime(data.meeting.startAt)} – {fmtTime(data.meeting.endAt)} · {data.meeting.teacherName}
             </p>
             <p className="mt-4 text-sm text-[#3c4043]">{who}</p>
-            {data.recording && (
-              <p className="mt-2 inline-flex items-center gap-2 text-sm text-[#a50e0e]">
-                <span className="h-2 w-2 rounded-full bg-[#ea4335]" /> This class is being recorded
-              </p>
-            )}
             <div className="mt-6 flex flex-col items-center gap-3">
               <PillButton loading={busy} onClick={start} className="min-w-[180px]">
                 {host ? (data.live ? "Rejoin" : "Start class") : "Join now"}
@@ -577,6 +572,7 @@ function Room({ data, user, isHost, media, onDone }) {
     return b;
   }, [isHost, mid]);
   const recRef = useRef(null);
+  const closingRef = useRef(false); // leaving / ending: don't start a new recording
   const sceneRef = useRef(null);
   const lastReact = useRef({});
 
@@ -710,13 +706,9 @@ function Room({ data, user, isHost, media, onDone }) {
     lastChat.current = others.length;
   }, [chat, chatReady, panel, user.id, ui]);
 
-  const recordingOn = !!room?.recording;
-  const prevRec = useRef(false);
-  useEffect(() => {
-    if (recordingOn && !prevRec.current && !isHost) setRecNotice(true);
-    if (!recordingOn) setRecNotice(false);
-    prevRec.current = recordingOn;
-  }, [recordingOn, isHost]);
+  // Every class is recorded automatically; no one in the class sees a recording sign
+  // (only admins, and the class's students later in My recordings, see recordings)
+  const recordingOn = false;
 
   useEffect(() => {
     const on = () => setFull(!!document.fullscreenElement);
@@ -752,40 +744,37 @@ function Room({ data, user, isHost, media, onDone }) {
     [mid, ui]
   );
 
-  const startRecording = () =>
-    ui.confirm({
-      title: "Record this class?",
-      message: "Everyone in the class will see that it's being recorded. The recording is made on this computer and uploaded while you teach – keep this tab open until you stop it. Admins can watch it later.",
-      confirmLabel: "Start recording",
-      onConfirm: async () => {
-        setRecState((s) => ({ ...s, busy: true }));
-        try {
-          const r = await api.post(`/meetings/${mid}/live/recording/start`);
-          const recorder = new ClassRecorder({
-            getScene: () => sceneRef.current || {},
-            onState: (x) => setRecState((s) => ({ ...s, warn: !!x.error && x.state === "recording" })),
-          });
-          recorder.onLimit = () => stopRecording();
-          recRef.current = { id: r.id, recorder };
-          await recorder.start(r);
-          setRecState({ on: true, busy: false, warn: false, since: new Date().toISOString() });
-        } catch (e) {
-          recRef.current = null;
-          setRecState({ on: false, busy: false, warn: false, since: null });
-          throw e;
-        }
-      },
-    });
+  // Recording starts on its own once the teacher is connected to the live class.
+  // (If the page was reloaded, the API first closes the recording this browser lost,
+  // keeping what was already uploaded, then starts a new one.)
+  const beginRecording = useCallback(async () => {
+    if (recRef.current) return;
+    setRecState((s) => ({ ...s, busy: true }));
+    try {
+      const r = await api.post(`/meetings/${mid}/live/recording/start`);
+      const recorder = new ClassRecorder({
+        getScene: () => sceneRef.current || {},
+        onState: (x) => setRecState((s) => ({ ...s, warn: !!x.error && x.state === "recording" })),
+      });
+      recorder.onLimit = () => stopRecording(true);
+      recRef.current = { id: r.id, recorder };
+      await recorder.start(r);
+      setRecState({ on: true, busy: false, warn: false, since: new Date().toISOString(), tries: 0 });
+    } catch (e) {
+      const stale = recRef.current;
+      recRef.current = null;
+      if (stale) api.post(`/meetings/${mid}/live/recording/${stale.id}/stop`, {}).catch(() => {});
+      console.warn("[class] recording didn't start", e);
+      setRecState((s) => ({ on: false, busy: false, warn: false, since: null, tries: (s.tries || 0) + 1 }));
+    }
+  }, [mid, stopRecording]);
 
-  // A recording this browser lost (page reloaded): close it so what was uploaded is kept
-  const staleRec = isHost && room?.recording?.id && !recRef.current && !recState.busy ? room.recording.id : null;
+  const liveNow = room?.status === "live";
   useEffect(() => {
-    if (!staleRec) return;
-    api
-      .post(`/meetings/${mid}/live/recording/${staleRec}/stop`, {})
-      .then(() => ui.toast("The recording stopped when the page reloaded. Start it again if you need to.", "info"))
-      .catch(() => {});
-  }, [staleRec, mid, ui]);
+    if (closingRef.current || !isHost || !canRecord() || !eng || !liveNow || recState.on || recState.busy || recRef.current || (recState.tries || 0) >= 3) return;
+    const t = setTimeout(beginRecording, recState.tries ? 5000 : 1000);
+    return () => clearTimeout(t);
+  }, [isHost, eng, liveNow, recState.on, recState.busy, recState.tries, beginRecording]);
 
   // Warn before closing the tab while recording
   useEffect(() => {
@@ -800,6 +789,7 @@ function Room({ data, user, isHost, media, onDone }) {
 
   // ---- leaving ----
   const leave = async () => {
+    closingRef.current = true;
     if (recRef.current) await stopRecording(true);
     await api.post(`/meetings/${mid}/live/leave`).catch(() => {});
     onDone("left");
@@ -807,12 +797,18 @@ function Room({ data, user, isHost, media, onDone }) {
   const end = () =>
     ui.confirm({
       title: "End the class for everyone?",
-      message: "Everyone leaves the class. Attendance is saved." + (recRef.current ? " The recording is saved first." : ""),
+      message: "Everyone leaves the class. Attendance is saved.",
       danger: true,
       confirmLabel: "End class",
       onConfirm: async () => {
+        closingRef.current = true;
         if (recRef.current) await stopRecording(true);
-        await api.post(`/meetings/${mid}/live/end`);
+        try {
+          await api.post(`/meetings/${mid}/live/end`);
+        } catch (e) {
+          closingRef.current = false; // still in the class: recording starts again
+          throw e;
+        }
         onDone("ended");
       },
     });
@@ -1096,9 +1092,6 @@ function Room({ data, user, isHost, media, onDone }) {
           </div>
           {isHost && canShareScreen() && <CtrlButton icon={MonitorUp} tone={eng.screen ? "on" : "default"} label={eng.screen ? "Stop presenting" : "Present your screen"} onClick={toggleScreen} className="hidden sm:inline-flex" />}
           {isHost && !mobile && <CtrlButton icon={PenLine} tone={room?.board ? "on" : "default"} label={room?.board ? "Close the whiteboard" : "Open the whiteboard"} onClick={toggleBoard} />}
-          {isHost && canRecord() && (
-            <CtrlButton icon={Circle} tone={recState.on ? "rec" : "default"} label={recState.on ? "Stop recording" : "Record the class"} disabled={recState.busy} onClick={() => (recState.on ? ui.confirm({ title: "Stop recording?", message: "The recording is saved for admins to watch.", confirmLabel: "Stop recording", onConfirm: () => stopRecording() }) : startRecording())} className={recState.on ? "[&>svg]:fill-white" : ""} />
-          )}
           <Menu
             align="right"
             trigger={

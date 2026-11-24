@@ -56,7 +56,7 @@ export function AdminRecordings() {
   const cap = data?.capBytes || 1;
   return (
     <>
-      <PageHeader title="Class recordings" subtitle={`Recorded by teachers during live classes. Each recording is deleted automatically ${plural(data?.retentionDays ?? 30, "day")} after the class.`} />
+      <PageHeader title="Class recordings" subtitle={`Every live class is recorded automatically from when the teacher joins. Each recording is deleted automatically ${plural(data?.retentionDays ?? 30, "day")} after the class.`} />
       <ErrorBox error={error} onRetry={reload} />
       {data && (
         <div className="mb-4 grid gap-4 sm:grid-cols-3">
@@ -83,7 +83,7 @@ export function AdminRecordings() {
         ) : (
           <Table
             rows={list}
-            empty={<Empty icon={Video} title="No recordings yet" text="Teachers start a recording with the record button during a live class." />}
+            empty={<Empty icon={Video} title="No recordings yet" text="Recordings appear here after a live class ends." />}
             columns={[
               {
                 key: "title",
