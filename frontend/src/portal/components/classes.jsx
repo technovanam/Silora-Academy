@@ -234,7 +234,7 @@ function EventChip({ m, onClick, showTeacher }) {
     <button onClick={onClick} className={cx("block w-full rounded-xl border px-2.5 py-2 text-left text-xs transition hover:shadow-sm", tone)}>
       <span className="block font-semibold">{fmtTime(m.startAt)}</span>
       <span className={cx("block truncate font-medium", m.status === "cancelled" && "line-through")}>{m.title}</span>
-      <span className="block truncate opacity-75">{showTeacher ? m.teacherName : m.students?.map((s) => s.name.split(" ")[0]).join(", ")}</span>
+      <span className="block truncate opacity-75">{showTeacher ? m.teacherName : m.students?.map((s) => (s.name || "").split(" ")[0]).join(", ")}</span>
     </button>
   );
 }

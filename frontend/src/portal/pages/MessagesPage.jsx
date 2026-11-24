@@ -202,11 +202,13 @@ function Ticks({ state, onDark, className }) {
   );
 }
 
+const firstName = (n) => String(n || "").trim().split(/s+/)[0];
+
 function ConversationRow({ c, admin, viewerId, active, onClick }) {
   const last = c.lastMessage;
-  const title = admin ? `${c.teacherName} · ${c.studentName}` : c.otherName;
+  const title = admin ? `${c.teacherName || "Teacher"} · ${c.studentName || "Student"}` : c.otherName || "";
   const mineLast = !admin && last && last.senderId === viewerId;
-  const who = last ? (mineLast ? "" : admin ? `${last.senderId === c.teacherId ? c.teacherName.split(" ")[0] : c.studentName.split(" ")[0]}: ` : "") : "";
+  const who = last ? (mineLast ? "" : admin ? `${firstName(last.senderId === c.teacherId ? c.teacherName : c.studentName) || (last.senderRole === "teacher" ? "Teacher" : "Student")}: ` : "") : "";
   const body = last ? (last.deleted ? (mineLast ? "You deleted this message" : "This message was deleted") : last.text || (last.file ? `📎 ${last.file}` : "")) : "";
   const preview = last ? `${who}${body}` : "No messages yet";
   return (

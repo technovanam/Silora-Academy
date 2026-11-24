@@ -24,7 +24,7 @@ export function StudentDashboard() {
   const js = next && classState(next);
   return (
     <>
-      <PageHeader title={`${greeting()}, ${user.name.split(" ")[0]}`} subtitle={data.teacherName ? `Your teacher: ${data.teacherName}` : "Your teacher will be assigned soon."} />
+      <PageHeader title={`${greeting()}, ${(user.name || "").split(" ")[0]}`} subtitle={data.teacherName ? `Your teacher: ${data.teacherName}` : "Your teacher will be assigned soon."} />
 
       {data.announcements?.length > 0 && (
         <Link to="/portal/announcements" className="mb-6 flex items-center gap-3 rounded-2xl border border-brand/40 bg-brand-soft px-4 py-3 transition hover:shadow-sm">

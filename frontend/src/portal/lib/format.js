@@ -36,8 +36,8 @@ export const toLocalInput = (v) => {
 };
 export const fromLocalInput = (s) => (s ? new Date(s).toISOString() : null);
 
-export const initials = (name = "") =>
-  name
+export const initials = (name) =>
+  String(name || "")
     .split(/\s+/)
     .filter((p) => /^[\p{L}\p{N}]/u.test(p))
     .slice(0, 2)
@@ -46,8 +46,8 @@ export const initials = (name = "") =>
 
 // ---- Consistent people data in tables --------------------------------------------------
 /** "SASIKIRAN TT" / "sanjana b" → "Sasikiran TT" / "Sanjana B". Mixed-case words (McDonald) are left alone. */
-export const fmtName = (name = "") =>
-  String(name)
+export const fmtName = (name) =>
+  String(name || "")
     .trim()
     .split(/\s+/)
     .map((w) => {

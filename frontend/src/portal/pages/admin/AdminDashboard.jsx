@@ -62,7 +62,7 @@ export function AdminDashboard() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[13px] font-medium text-slate-500">{today}</p>
-          <h1 className="mt-0.5 text-xl font-bold tracking-tight text-navy sm:text-2xl">Good {greeting()}, {user.name.split(" ")[0]}</h1>
+          <h1 className="mt-0.5 text-xl font-bold tracking-tight text-navy sm:text-2xl">Good {greeting()}, {(user.name || "").split(" ")[0]}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
           {canUsers && (

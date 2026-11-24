@@ -27,7 +27,7 @@ export function TeacherDashboard() {
   return (
     <>
       <PageHeader
-        title={`Welcome, ${user.name.split(" ")[0]}`}
+        title={`Welcome, ${(user.name || "").split(" ")[0]}`}
         subtitle={`${s.classesToday ? `You have ${plural(s.classesToday, "class", "classes")} today.` : "No classes today."} ${s.pendingRequests ? `${plural(s.pendingRequests, "schedule request")} waiting for the admin.` : ""}`}
         actions={
           <>
