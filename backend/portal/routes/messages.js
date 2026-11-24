@@ -38,7 +38,8 @@ const DELETE_WINDOW_H = 48;
 
 const convId = (teacherId, studentId) => `${teacherId}__${studentId}`;
 const dmId = (adminId, userId) => `dm__${adminId}__${userId}`;
-const isDirect = (c) => c.kind === "direct";
+// Older direct chats were saved without "kind", so the dm__ id counts too
+const isDirect = (c) => c.kind === "direct" || String(c.id || "").startsWith("dm__");
 const convRef = (id) => db.collection(C.conversations).doc(id);
 const msgs = (id) => convRef(id).collection("messages");
 const alive = (u) => u && !u.deletedAt && !u.purged;
