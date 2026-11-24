@@ -40,6 +40,8 @@ const convId = (teacherId, studentId) => `${teacherId}__${studentId}`;
 const dmId = (adminId, userId) => `dm__${adminId}__${userId}`;
 // Older direct chats were saved without "kind", so the dm__ id counts too
 const isDirect = (c) => c.kind === "direct" || String(c.id || "").startsWith("dm__");
+// What the admin monitor shows: real teacher–student chats only (not old test chats without both)
+const isClassChat = (c) => !isDirect(c) && !!c.teacherId && !!c.studentId;
 const convRef = (id) => db.collection(C.conversations).doc(id);
 const msgs = (id) => convRef(id).collection("messages");
 const alive = (u) => u && !u.deletedAt && !u.purged;
@@ -72,7 +74,7 @@ async function loadConversation(req, monitor = false) {
   const snap = await convRef(req.params.id).get();
   if (!snap.exists) fail(404, "Conversation not found");
   const c = { id: snap.id, ...snap.data() };
-  if (monitor ? isDirect(c) : !(c.participants || []).includes(req.user.id)) fail(404, "Conversation not found");
+  if (monitor ? !isClassChat(c) : !(c.participants || []).includes(req.user.id)) fail(404, "Conversation not found");
   return c;
 }
 
@@ -403,7 +405,7 @@ adminR.use("/admin/messages", requireRole("admin"), requirePerm("messages"));
 adminR.get(
   "/admin/messages/conversations",
   ah(async (req, res) => {
-    let list = listData(await db.collection(C.conversations).get()).filter((c) => c.messageCount > 0 && !isDirect(c));
+    let list = listData(await db.collection(C.conversations).get()).filter((c) => c.messageCount > 0 && isClassChat(c));
     if (req.query.teacherId) list = list.filter((c) => c.teacherId === req.query.teacherId);
     if (req.query.studentId) list = list.filter((c) => c.studentId === req.query.studentId);
     const names = await nameMap(list.flatMap((c) => [c.teacherId, c.studentId]));
