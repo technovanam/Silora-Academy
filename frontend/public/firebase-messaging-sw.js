@@ -4,6 +4,10 @@
 importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js");
 
+// Take over straight away so push can subscribe on the very first visit
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
 const params = Object.fromEntries(new URL(self.location.href).searchParams);
 if (params.apiKey) {
   firebase.initializeApp(params);
