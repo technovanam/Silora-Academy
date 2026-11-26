@@ -12,6 +12,7 @@
     "dev": "nodemon server.js",
     "seed": "node scripts/seed.js",
     "seed:history": "node scripts/seed-history.js",
+    "seed:sample": "node scripts/seed-sample.js",
     "create-admin": "node scripts/create-admin.js",
     "create-demo": "node scripts/create-demo.js"
   },

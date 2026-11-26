@@ -7,7 +7,7 @@ import { Router } from "express";
 import config from "../config.js";
 import { auth, db, C, FieldValue } from "../firebase.js";
 import { ah, fail, nowIso, addMinutes, isEmail, str, clientIp, listData } from "../util.js";
-import { authenticate } from "../middleware.js";
+import { authenticate, STUDENT_SESSION_DAYS } from "../middleware.js";
 import { getSettings, getUser, publicProfile, logActivity, teacherIdsOf, subjectsTaughtBy } from "../services/core.js";
 import { mailConfigured, trySendMail } from "../../mailer.js";
 
@@ -194,7 +194,9 @@ meRouter.get(
       },
       teachers,
       settings: {
-        sessionTimeoutMin: req.settings.sessionTimeoutMin,
+        // Students have no inactivity logout – they stay signed in for STUDENT_SESSION_DAYS
+        sessionTimeoutMin: u.role === "student" ? null : req.settings.sessionTimeoutMin,
+        sessionDays: u.role === "student" ? STUDENT_SESSION_DAYS : null,
         classReminderMinutes: req.settings.classReminderMinutes,
         timezone: config.timezone,
         pushAvailable: !config.useEmulators,

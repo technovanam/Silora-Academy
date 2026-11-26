@@ -8,7 +8,7 @@
 // ============================================================
 import React, { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, CalendarOff, CheckCircle2, ClipboardCheck, Clock, Download, History, Lock, Pencil, Plus, Settings2, Timer, UserX, Wifi, XCircle } from "lucide-react";
+import { AlertTriangle, BookOpenCheck, CalendarOff, CalendarSync, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Download, FilePenLine, History, LayoutList, ListChecks, Lock, MessageSquareText, NotebookPen, Pencil, Plus, Settings2, Table2, Timer, UserX, Wifi, XCircle } from "lucide-react";
 import { api } from "../lib/api.js";
 import { fmtDate, fmtDateTime, fmtDay, fmtTime, fmtWeek, fromNow, plural } from "../lib/format.js";
 import { Badge, Button, Card, CardTitle, Dialog, Empty, ErrorBox, Field, Input, Loading, Notice, PageHeader, Pager, Progress, SearchInput, Segmented, Select, StatCard, Table, Textarea, cx, useAsync, usePaged, useUi } from "../ui/index.jsx";
@@ -81,6 +81,83 @@ function TimelineBar({ intervals, startAt, endAt }) {
         <div key={k} className="absolute inset-y-0 rounded-full bg-emerald-500" style={{ left: `${((new Date(i.from).getTime() - first) / span) * 100}%`, width: `${Math.max(0.8, ((new Date(i.to).getTime() - new Date(i.from).getTime()) / span) * 100)}%` }} />
       ))}
     </div>
+  );
+}
+
+/** One labelled block of a class report (lesson, homework, quiz…). */
+function ReportItem({ icon: Icon, label, children, empty = "Not recorded", wide }) {
+  const has = Array.isArray(children) ? children.some(Boolean) : !!children;
+  return (
+    <div className={cx("rounded-lg border border-line bg-slate-50/60 p-3", wide && "sm:col-span-2")}>
+      <dt className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" /> {label}
+      </dt>
+      <dd className={cx("whitespace-pre-line text-sm", has ? "text-slate-800" : "italic text-muted")}>{has ? children : empty}</dd>
+    </div>
+  );
+}
+
+const scoreOf = (topic, result) =>
+  topic || result ? (
+    <>
+      {topic || "—"}
+      {result && <span className="ml-2 inline-block rounded-md bg-navy/10 px-1.5 py-0.5 text-xs font-semibold text-navy">Score: {result}</span>}
+    </>
+  ) : null;
+
+/**
+ * What happened in one class, written for students and parents: lesson taught,
+ * homework, quiz / test and the teacher's remarks, plus attendance.
+ * Admins also see the student's name and the teacher's note to the academy.
+ */
+export function ClassReport({ r, admin, onOpen }) {
+  return (
+    <li className="rounded-xl border border-line bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-navy">
+            {admin && <>{r.studentName} · </>}
+            {r.subject || r.title}
+            <span className="ml-2 text-xs font-normal text-muted">Class #{r.classNo}</span>
+          </p>
+          <p className="text-sm text-muted">
+            {r.day}, {fmtDate(r.startAt)} · {fmtTime(r.startAt)} · {r.teacherName}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <StatusBadge status={r.status} />
+          <span className="text-xs text-muted">{mins(r.attendedMin)} of {mins(r.scheduledMin)}</span>
+          {admin && r.corrected && <span className="text-[11px] text-sky-700">corrected</span>}
+        </div>
+      </div>
+      <dl className="grid gap-3 sm:grid-cols-2">
+        <ReportItem icon={BookOpenCheck} label="Lesson taught">{r.lessonTaken}</ReportItem>
+        <ReportItem icon={NotebookPen} label="Homework" empty="No homework recorded">{r.homework}</ReportItem>
+        {(r.quizTopic || r.quizResult) && <ReportItem icon={ListChecks} label="Quiz">{scoreOf(r.quizTopic, r.quizResult)}</ReportItem>}
+        {(r.testTopic || r.testResult) && <ReportItem icon={FilePenLine} label="Test">{scoreOf(r.testTopic, r.testResult)}</ReportItem>}
+        <ReportItem icon={MessageSquareText} label="Teacher's remarks" empty="No remarks" wide={!(r.quizTopic || r.quizResult) === !(r.testTopic || r.testResult)}>{r.remarks}</ReportItem>
+        {r.compensationFor && <ReportItem icon={CalendarSync} label="Make-up class for">{r.compensationFor}</ReportItem>}
+        {admin && r.formRemarks && <ReportItem icon={ClipboardList} label="Teacher's note to the academy" wide>{r.formRemarks}</ReportItem>}
+      </dl>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+        <span className="flex flex-wrap items-center gap-2">Joined: <Intervals intervals={r.intervals} compact /></span>
+        {onOpen && <Button size="xs" variant="ghost" icon={Pencil} onClick={() => onOpen(r.meetingId)}>Open form</Button>}
+      </div>
+    </li>
+  );
+}
+
+/** Class reports, 10 per page. */
+function ClassReports({ rows, admin, onOpen, empty }) {
+  const pg = usePaged(rows, 10, [10, 25, 50]);
+  if (!rows.length) return empty;
+  return (
+    <>
+      <ul className="space-y-4">
+        {pg.rows.map((r) => <ClassReport key={r.id} r={r} admin={admin} onOpen={onOpen} />)}
+      </ul>
+      {pg.show && <Card className="mt-4" padded={false}><Pager {...pg.pager} /></Card>}
+    </>
   );
 }
 
@@ -254,22 +331,10 @@ export function StudentAttendance() {
               <Table rows={data.bySubject.map((s) => ({ ...s, id: s.subject, name: s.subject }))} columns={groupColumns("Subject")} />
             </Card>
           )}
-          <Card padded={false}>
-            <div className="p-5 pb-0 sm:p-6 sm:pb-0"><CardTitle icon={History} title="History" /></div>
-            <Table
-              pageSize={25}
-              rows={data.rows}
-              empty={<Empty icon={ClipboardCheck} title="No attendance yet" text="Your teacher fills in attendance after each class." />}
-              columns={[
-                { key: "date", label: "Date", render: (r) => <span className="whitespace-nowrap"><b className="text-navy">{fmtDate(r.startAt)}</b><span className="block text-xs text-muted">{r.day}, {fmtTime(r.startAt)}</span></span> },
-                { key: "subject", label: "Subject", render: (r) => <span>{r.subject || "—"}<span className="block text-xs text-muted">Class #{r.classNo} · {r.teacherName}</span></span> },
-                { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status} /> },
-                { key: "time", label: "Attended", render: (r) => <span className="whitespace-nowrap">{mins(r.attendedMin)} <span className="text-xs text-muted">of {mins(r.scheduledMin)}</span></span> },
-                { key: "intervals", label: "Join / leave", render: (r) => <Intervals intervals={r.intervals} compact /> },
-                { key: "remarks", label: "Remarks", className: "max-w-[220px]", render: (r) => <span className="line-clamp-2 text-sm text-slate-600">{r.remarks || "—"}</span> },
-              ]}
-            />
-          </Card>
+          <div className="mb-3">
+            <CardTitle icon={History} title="Class reports" subtitle="For every class: what was taught, the homework given, quiz and test results and your teacher's remarks – newest first." />
+          </div>
+          <ClassReports rows={data.rows} empty={<Card><Empty icon={ClipboardCheck} title="No class reports yet" text="Your teacher fills in a report after each class." /></Card>} />
         </>
       )}
       <LeaveDialog open={leaveOpen} onClose={() => setLeaveOpen(false)} onSaved={() => { reload(true); setParams({ tab: "leave" }); }} />
@@ -539,7 +604,10 @@ const recordColumns = ({ showStudent, showTeacher, onOpen }) => [
   { key: "status", label: "Status", render: (r) => <span className="flex flex-col items-start gap-0.5"><StatusBadge status={r.status} />{r.overridden && <span className="text-[11px] text-amber-700">changed by teacher</span>}{r.corrected && <span className="text-[11px] text-sky-700">corrected</span>}</span> },
   { key: "time", label: "Attended", render: (r) => <span className="whitespace-nowrap">{mins(r.attendedMin)} <span className="text-xs text-muted">/ {mins(r.scheduledMin)}</span></span> },
   { key: "intervals", label: "Join / leave", render: (r) => <Intervals intervals={r.intervals} compact /> },
-  { key: "remarks", label: "Remarks", className: "max-w-[200px]", render: (r) => <span className="line-clamp-2 text-sm text-slate-600">{r.remarks || "—"}</span> },
+  { key: "lessonTaken", label: "Lesson taught", className: "max-w-[220px]", render: (r) => <span className="line-clamp-2 text-sm text-slate-700" title={r.lessonTaken}>{r.lessonTaken || "—"}</span> },
+  { key: "homework", label: "Homework", className: "max-w-[200px]", render: (r) => <span className="line-clamp-2 text-sm text-slate-700" title={r.homework}>{r.homework || "—"}</span> },
+  { key: "quizTest", label: "Quiz / test", className: "max-w-[200px]", render: (r) => (r.quizTopic || r.quizResult || r.testTopic || r.testResult ? <span className="text-sm text-slate-700">{(r.quizTopic || r.quizResult) && <span className="block">Quiz: {[r.quizTopic, r.quizResult].filter(Boolean).join(" – ")}</span>}{(r.testTopic || r.testResult) && <span className="block">Test: {[r.testTopic, r.testResult].filter(Boolean).join(" – ")}</span>}</span> : "—") },
+  { key: "remarks", label: "Remarks", className: "max-w-[200px]", render: (r) => <span className="line-clamp-2 text-sm text-slate-600" title={r.remarks}>{r.remarks || "—"}</span> },
   ...(onOpen ? [{ key: "open", label: "", render: (r) => <Button size="xs" variant="ghost" icon={Pencil} onClick={(e) => { e.stopPropagation(); onOpen(r.meetingId); }}>Form</Button> }] : []),
 ];
 
@@ -566,6 +634,7 @@ export function AdminAttendance() {
   const setTab = (v) => setParams(v === "overview" ? {} : { tab: v });
   const [filters, setFilters] = useState({ studentId: null, teacherId: null, subject: null, sessionId: null, status: null, from: "", to: "" });
   const [open, setOpen] = useState(null);
+  const [view, setView] = useState("reports");
   const reportTab = ["overview", "students", "teachers", "subjects", "sessions", "dates"].includes(tab);
   const data = useAsync(() => (reportTab ? api.get("/admin/attendance/records", filters) : Promise.resolve(null)), [reportTab, JSON.stringify(filters)]);
   const pending = useAsync(() => api.get("/admin/attendance/pending"), [tab === "pending"]);
@@ -597,6 +666,15 @@ export function AdminAttendance() {
           ) : d && (
             <>
               <SummaryCards s={d.summary} leaveCounts={d.leaveCounts} />
+              {tab === "overview" && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-muted">{view === "reports" ? "Each class with the lesson taught, homework, quiz/test results and remarks." : "Click a row to open the full form."}</p>
+                  <Segmented value={view} onChange={setView} options={[{ value: "reports", label: "Class reports", icon: LayoutList }, { value: "table", label: "Table", icon: Table2 }]} />
+                </div>
+              )}
+              {tab === "overview" && view === "reports" ? (
+                <ClassReports rows={d.rows} admin onOpen={setOpen} empty={<Card><Empty icon={ClipboardCheck} title="No attendance records match" /></Card>} />
+              ) : (
               <Card flush>
                 {tab === "overview" && <Table pageSize={25} rows={d.rows} onRowClick={(r) => setOpen(r.meetingId)} columns={recordColumns({ showStudent: true, showTeacher: true })} empty={<Empty icon={ClipboardCheck} title="No attendance records match" />} />}
                 {tab === "students" && <Table pageSize={25} rows={groupBy(d.rows, "studentId", "studentName")} columns={groupColumns("Student")} onRowClick={(g) => { setFilters((p) => ({ ...p, studentId: g.id })); setTab("overview"); }} />}
@@ -605,6 +683,7 @@ export function AdminAttendance() {
                 {tab === "sessions" && <Table pageSize={25} rows={groupBy(d.rows.map((r) => ({ ...r, sessionId: r.sessionId || "none", sessionName: (d.sessions || []).find((x) => x.id === r.sessionId)?.name || "No session" })), "sessionId", "sessionName")} columns={groupColumns("Session")} onRowClick={(g) => { if (g.id !== "none") { setFilters((p) => ({ ...p, sessionId: g.id })); setTab("overview"); } }} />}
                 {tab === "dates" && <Table pageSize={25} rows={groupBy(d.rows, "date").sort((a, b) => (a.id < b.id ? 1 : -1)).map((g) => ({ ...g, name: fmtDay(`${g.id}T12:00:00`) }))} columns={groupColumns("Date")} onRowClick={(g) => { setFilters((p) => ({ ...p, from: g.id, to: g.id })); setTab("overview"); }} />}
               </Card>
+              )}
             </>
           )}
         </>

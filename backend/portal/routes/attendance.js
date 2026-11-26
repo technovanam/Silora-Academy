@@ -332,6 +332,13 @@ router.get(
           { label: "Suggested status", value: (r) => STATUS_LABEL[r.suggested] || r.suggested },
           { label: "Join/leave intervals", value: (r) => r.intervals.map((i) => `${time(i.from)}–${time(i.to)}`).join("; ") },
           { label: "Interruptions", key: "interruptions" },
+          { label: "Lesson taught", key: "lessonTaken" },
+          { label: "Homework", key: "homework" },
+          { label: "Quiz topic", key: "quizTopic" },
+          { label: "Quiz result", key: "quizResult" },
+          { label: "Test topic", key: "testTopic" },
+          { label: "Test result", key: "testResult" },
+          { label: "Make-up class for", key: "compensationFor" },
           { label: "Remarks", key: "remarks" },
           { label: "Class remarks", key: "formRemarks" },
         ])

@@ -237,7 +237,7 @@ export function ProfilePage() {
           </Card>
 
           <Card>
-            <CardTitle icon={ShieldCheck} title="Recent sign-ins" subtitle={`You're signed out automatically after ${plural(settings?.sessionTimeoutMin || 30, "minute")} of inactivity.`} />
+            <CardTitle icon={ShieldCheck} title="Recent sign-ins" subtitle={settings?.sessionDays ? `You stay signed in on this device for ${plural(settings.sessionDays, "day")}. Sign out yourself on a shared device.` : `You're signed out automatically after ${plural(settings?.sessionTimeoutMin || 30, "minute")} of inactivity.`} />
             {activity.loading ? (
               <Loading />
             ) : (

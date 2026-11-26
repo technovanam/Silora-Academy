@@ -7,6 +7,8 @@ import { HttpError, nowIso } from "./util.js";
 import { getSettings, hasPerm } from "./services/core.js";
 
 const ACTIVITY_WRITE_EVERY_MS = 60 * 1000;
+export const STUDENT_SESSION_DAYS = 30;
+const STUDENT_SESSION_MS = STUDENT_SESSION_DAYS * 24 * 60 * 60 * 1000;
 
 export async function authenticate(req, res, next) {
   if (req.user) return next(); // already verified earlier in this request
@@ -39,11 +41,17 @@ export async function authenticate(req, res, next) {
     const user = { id: snap.id, ...snap.data() };
     if (!user.active || user.deletedAt) throw new HttpError(403, "This account is deactivated. Contact the academy.", "inactive");
 
-    // Server-side inactivity timeout (the browser also logs out on its own)
     const settings = await getSettings();
     const last = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : 0;
     const timeoutMs = settings.sessionTimeoutMin * 60 * 1000;
-    if (last && Date.now() - last > timeoutMs && decoded.auth_time * 1000 < last + timeoutMs - 1000) {
+    if (user.role === "student") {
+      // Students stay signed in on their device – no inactivity logout, but a fresh
+      // password sign-in is required once the login is STUDENT_SESSION_DAYS old.
+      if (Date.now() - decoded.auth_time * 1000 > STUDENT_SESSION_MS) {
+        throw new HttpError(401, `For your security, please sign in again (sign-ins last ${STUDENT_SESSION_DAYS} days).`, "session_expired");
+      }
+    } else if (last && Date.now() - last > timeoutMs && decoded.auth_time * 1000 < last + timeoutMs - 1000) {
+      // Server-side inactivity timeout for staff (the browser also logs out on its own)
       // Signed in before the idle period started → force a fresh login
       throw new HttpError(401, "You were signed out after a period of inactivity.", "session_timeout");
     }
