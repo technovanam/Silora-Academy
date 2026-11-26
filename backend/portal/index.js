@@ -18,6 +18,12 @@ import progress from "./routes/progress.js";
 import attendance from "./routes/attendance.js";
 import notifications from "./routes/notifications.js";
 import messages from "./routes/messages.js";
+import sessions from "./routes/sessions.js";
+import subjects from "./routes/subjects.js";
+import fees from "./routes/fees.js";
+import teacherPayments from "./routes/teacherPayments.js";
+import demos, { guestRouter } from "./routes/demos.js";
+import { feeGate } from "./services/fees.js";
 import { startJobs } from "./services/jobs.js";
 import { HttpError } from "./util.js";
 
@@ -32,11 +38,14 @@ export function mountPortal(app) {
   // Public (no login): signed file links, login
   api.use(filesRouter);
   api.use(publicRouter);
+  api.use(guestRouter); // demo-class guest links (no account)
   api.get("/health", (req, res) => res.json({ ok: true, emulators: config.useEmulators }));
 
   // Everything below needs a signed-in user
   api.use(authenticate);
   api.use(meRouter);
+  // Students whose session fee proof is missing can't use academic features
+  api.use(feeGate);
   api.use(dashboard);
   api.use(meetings);
   api.use(timetable);
@@ -47,6 +56,11 @@ export function mountPortal(app) {
   api.use(attendance);
   api.use(notifications);
   api.use(messages);
+  api.use(subjects);
+  api.use(sessions);
+  api.use(fees);
+  api.use(teacherPayments);
+  api.use(demos);
   api.use("/admin", requireRole("admin"), adminUsers, admin);
 
   api.use((req, res) => res.status(404).json({ error: "Not found" }));

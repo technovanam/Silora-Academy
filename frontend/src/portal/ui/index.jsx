@@ -256,6 +256,7 @@ export function Toggle({ checked, onChange, label, description, disabled }) {
         type="button"
         role="switch"
         aria-checked={!!checked}
+        aria-label={typeof label === "string" ? label : undefined}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cx("relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2", checked ? "bg-brand" : "bg-slate-300")}
@@ -692,6 +693,22 @@ export function UiProvider({ children }) {
  * minWidth: Tailwind min-width class for the <table> (it scrolls sideways below that).
  */
 const PAGE_SIZES = [10, 25, 50, 100];
+
+/** Paging for any list (cards, lists, tables): const pg = usePaged(rows, 10); pg.rows … <Pager {...pg.pager} /> */
+export function usePaged(rows, initialSize = 10, sizes = PAGE_SIZES) {
+  const [size, setSize] = useState(initialSize);
+  const [page, setPage] = useState(0);
+  const count = rows?.length || 0;
+  const pages = Math.max(1, Math.ceil(count / size));
+  // A new filter gives a different list: back to the first page
+  useEffect(() => setPage(0), [count, size]);
+  const p = Math.min(page, pages - 1);
+  return {
+    rows: (rows || []).slice(p * size, p * size + size),
+    show: count > Math.min(...sizes),
+    pager: { page: p, pages, size, count, sizes, onPage: setPage, onSize: setSize },
+  };
+}
 export function Table({ columns, rows, rowKey = "id", onRowClick, empty, dense, bleed = false, pageSize, minWidth = "min-w-[640px]" }) {
   const [size, setSize] = useState(pageSize || 0);
   const [page, setPage] = useState(0);
@@ -733,7 +750,7 @@ export function Table({ columns, rows, rowKey = "id", onRowClick, empty, dense, 
   );
 }
 
-function Pager({ page, pages, size, count, onPage, onSize }) {
+export function Pager({ page, pages, size, count, onPage, onSize, sizes = PAGE_SIZES }) {
   // First, last, and the pages around the current one, with "…" for the gaps
   const nums = [...new Set([0, pages - 1, page - 1, page, page + 1])].filter((n) => n >= 0 && n < pages).sort((a, b) => a - b);
   const items = nums.flatMap((n, i) => (i && n - nums[i - 1] > 1 ? ["gap" + n, n] : [n]));
@@ -747,7 +764,7 @@ function Pager({ page, pages, size, count, onPage, onSize }) {
         <label className="flex items-center gap-2">
           Rows per page
           <select value={size} onChange={(e) => onSize(Number(e.target.value))} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-sm text-ink focus:border-brand focus:outline-none">
-            {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+            {sizes.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
       </div>
@@ -774,22 +791,27 @@ function Pager({ page, pages, size, count, onPage, onSize }) {
 
 // ---- Data loading hook ------------------------------------------------------------------
 export function useAsync(fn, deps = []) {
-  const [state, setState] = useState({ data: null, loading: true, error: null });
+  const [state, setState] = useState({ data: null, loading: true, error: null, version: 0 });
   const counter = useRef(0);
+  const versions = useRef(0);
+  // Changes during the render in which the deps change – so that render already
+  // counts as loading (the fetch itself only starts in the effect afterwards)
+  const version = useMemo(() => ++versions.current, deps); // eslint-disable-line react-hooks/exhaustive-deps
   const run = useCallback(async (silent) => {
     const n = ++counter.current;
     if (!silent) setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const data = await fn();
-      if (n === counter.current) setState({ data, loading: false, error: null });
+      if (n === counter.current) setState({ data, loading: false, error: null, version });
     } catch (error) {
-      if (n === counter.current) setState((s) => ({ ...s, loading: false, error }));
+      if (n === counter.current) setState((s) => ({ ...s, loading: false, error, version }));
     }
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     run();
   }, [run]);
-  return { ...state, reload: run, setData: (data) => setState((s) => ({ ...s, data: typeof data === "function" ? data(s.data) : data })) };
+  const { version: loadedFor, ...rest } = state;
+  return { ...rest, loading: rest.loading || loadedFor !== version, reload: run, setData: (data) => setState((s) => ({ ...s, data: typeof data === "function" ? data(s.data) : data })) };
 }
 
 export function Pill({ active, children, onClick }) {

@@ -11,7 +11,7 @@ import config from "../config.js";
 import { db, C } from "../firebase.js";
 import { ah, fail, nowIso, str, listData, getMany } from "../util.js";
 import { requireRole } from "../middleware.js";
-import { hasPerm, getUser, audit } from "../services/core.js";
+import { hasPerm, getUser, audit, assignmentProblem, canonicalSubject } from "../services/core.js";
 
 const router = Router();
 const MAX_GROUP = config.maxClassSize;
@@ -90,7 +90,6 @@ async function validate(body, ignoreId) {
   for (const id of studentIds) {
     const s = users[id];
     if (!s || s.role !== "student" || s.deletedAt) fail(400, "One of the selected students was not found");
-    if (s.teacherId !== teacherId) fail(400, `${s.name} is not assigned to ${teacher.name}`);
   }
 
   const days = [...new Set((Array.isArray(body.days) ? body.days : [body.day]).map(Number))];
@@ -101,8 +100,11 @@ async function validate(body, ignoreId) {
   if (toMin(end) <= toMin(start)) fail(400, "The end time must be after the start time");
   if (toMin(end) - toMin(start) < 15) fail(400, "A timetable slot must be at least 15 minutes");
 
-  const subject = str(body.subject, 80);
-  if (!subject) fail(400, "Enter the subject");
+  const subject = await canonicalSubject(body.subject, { allowInactive: !!ignoreId });
+  for (const id of studentIds) {
+    const problem = assignmentProblem(users[id], teacherId, subject, teacher.name);
+    if (problem) fail(400, problem);
+  }
   const lesson = str(body.lesson, 120);
   const notes = str(body.notes, 500);
 

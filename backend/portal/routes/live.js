@@ -18,6 +18,7 @@ import { ah, fail, nowIso, newId, str, listData, getMany } from "../util.js";
 import { canAccess, canSeeAll } from "./meetings.js";
 import { logActivity } from "../services/core.js";
 import { finishAbandonedRecordings } from "./recordings.js";
+import { recomputeForMeeting } from "../services/teacherPayments.js";
 
 const router = Router();
 export const OPEN_EARLY_MIN = 15; // the class can be opened this long before the start
@@ -28,7 +29,7 @@ const STALE_MS = 6 * 60 * 1000; // no check-in for this long → treated as gone
 const roomRef = (id) => db.collection(C.liveRooms).doc(id);
 const peopleOf = (id) => roomRef(id).collection("people");
 const sec = (a, b) => Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000));
-const displayName = (u) => (u.role === "teacher" ? `${u.name} (Teacher)` : u.role === "admin" ? `${u.name} (Admin)` : u.name);
+const displayName = (u) => (u.role === "teacher" ? `${u.name} (Teacher)` : u.role === "admin" ? `${u.name} (Admin)` : u.role === "guest" ? `${u.name} (Guest)` : u.name);
 
 async function loadMeeting(req) {
   const snap = await db.collection(C.meetings).doc(req.params.id).get();
@@ -51,18 +52,26 @@ function checkWindow(user, m) {
   if (now > closes) fail(400, "This class has finished", "finished");
 }
 
-const meetingInfo = (m, teacherName) => ({ id: m.id, title: m.title, subject: m.subject || "", teacherName, startAt: m.startAt, endAt: m.endAt });
+const meetingInfo = (m, teacherName) => ({ id: m.id, title: m.title, subject: m.subject || "", teacherName, startAt: m.startAt, endAt: m.endAt, isDemo: !!m.isDemo });
 
-// Close an open stretch of time in the class (leave, removal, end, gone quiet)
+// Every stretch of time in the class is kept as its own interval {from, to}, so a
+// network drop and rejoin shows as two intervals (services/attendance.js merges them)
+const MAX_INTERVALS = 100;
 function closeFields(p, at) {
   if (!p.openSince) return {};
   const end = at < p.openSince ? p.openSince : at;
-  return { openSince: null, lastLeftAt: end, totalSec: (p.totalSec || 0) + sec(p.openSince, end) };
+  const list = [...(p.intervals || [])];
+  const last = list[list.length - 1];
+  if (last && !last.to) last.to = end;
+  else list.push({ from: p.openSince, to: end }); // started before intervals were recorded
+  return { openSince: null, lastLeftAt: end, totalSec: (p.totalSec || 0) + sec(p.openSince, end), intervals: list.slice(-MAX_INTERVALS) };
 }
 function openFields(p, now, sessionId) {
+  const intervals = p.openSince ? p.intervals || [] : [...(p.intervals || []), { from: now, to: null }].slice(-MAX_INTERVALS);
   return {
     status: "in",
     openSince: p.openSince || now,
+    intervals,
     firstJoinedAt: p.firstJoinedAt || now,
     joins: (p.joins || 0) + (p.openSince ? 0 : 1),
     admittedSession: sessionId,
@@ -151,14 +160,22 @@ router.post(
       );
       await meRef.set({ ...base, ...openFields(me, now, sessionId), isHost: true, canSpeak: true, canVideo: true }, { merge: true });
       await refreshCount(m.id);
-      if (!live) await logActivity(req, "class.live_start", { targetType: "meeting", targetId: m.id, summary: `Started the live class "${m.title}"` });
+      if (!live) {
+        // The class has been conducted → it needs an attendance form (services/attendance.js)
+        // (Demo classes are kept out of attendance, sessions and teacher payments)
+        await db.collection(C.meetings).doc(m.id).update(m.isDemo ? { demoHeld: true, liveStartedAt: m.liveStartedAt || now } : { hadLiveClass: true, liveStartedAt: m.liveStartedAt || now }).catch(() => {});
+        if (m.isDemo && m.demoId) await db.collection(C.demoRequests).doc(m.demoId).update({ heldAt: now }).catch(() => {});
+        // A held class counts towards the teacher's session (payment due when all are held)
+        else if (!m.hadLiveClass) recomputeForMeeting(m);
+        await logActivity(req, "class.live_start", { targetType: "meeting", targetId: m.id, summary: `Started the live class "${m.title}"` });
+      }
       return res.json({ role: "host", sessionId });
     }
 
     // Participant
     if (!room) await ref.set({ meetingId: m.id, title: m.title, status: "idle", hostId: null, sessionId: null, inClass: 0 }, { merge: true });
     if (live && me.status === "removed" && me.removedSession === room.sessionId) fail(403, "The teacher removed you from this class", "removed");
-    const staff = req.user.role !== "student";
+    const staff = ["teacher", "admin"].includes(req.user.role); // students and demo guests wait to be let in
     const rejoin = live && me.admittedSession === room.sessionId; // was let in earlier this session
     if (live && (staff || rejoin)) {
       await meRef.set({ ...base, ...openFields(me, now, room.sessionId), isHost: false, canSpeak: staff, canVideo: staff }, { merge: true });
@@ -279,7 +296,7 @@ router.get(
   "/meetings/:id/live/attendance",
   ah(async (req, res) => {
     const m = await loadMeeting(req);
-    if (req.user.role === "student") fail(403, "Only teachers and admins can see class attendance");
+    if (!["teacher", "admin"].includes(req.user.role)) fail(403, "Only teachers and admins can see class attendance");
     const room = (await roomRef(m.id).get()).data() || null;
     const people = listData(await peopleOf(m.id).get());
     const byId = Object.fromEntries(people.map((p) => [p.id, p]));

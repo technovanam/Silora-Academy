@@ -183,8 +183,8 @@ app.post("/api/contact", upload.none(), async (req, res) => {
     // Send emails asynchronously (fire-and-forget pattern)
     // Errors are logged but don't affect the user's response
 
-    // Send notification to admin
-    await sendSiteEmail({
+    // Send notification to admin (not again when the same person asked this week)
+    if (!saved.duplicate) await sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Contact Form Submission from ${user_name}`,
@@ -236,6 +236,17 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
   try {
     // Extract form data from request body
     const { name, email, mobile, class_grade, board, city, state, country } = req.body;
+
+    // Save it in the portal (Admin → Demo requests). Bots that fill the hidden
+    // field, and too many requests from one address, get "received" but no emails.
+    let saved = {};
+    try {
+      const { saveDemoRequest } = await import("./portal/routes/demos.js");
+      saved = await saveDemoRequest(req.body, (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket?.remoteAddress || "");
+    } catch (e) {
+      console.error("Demo request not saved:", e.message);
+    }
+    if (saved.spam || saved.limited) return res.status(200).json({ success: true, message: "Demo request received successfully" });
 
 
     // ========================================================================

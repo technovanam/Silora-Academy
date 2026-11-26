@@ -33,6 +33,7 @@ async function handle(res) {
   if (!res.ok) {
     const err = new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.code);
     if (res.status === 401 && SESSION_CODES.includes(err.code)) window.dispatchEvent(new CustomEvent("portal:session-ended", { detail: err }));
+    if (res.status === 403 && err.code === "fee_pending") window.dispatchEvent(new CustomEvent("portal:fee-pending", { detail: err }));
     if (res.status === 403 && err.code === "inactive") window.dispatchEvent(new CustomEvent("portal:session-ended", { detail: err }));
     throw err;
   }

@@ -6,6 +6,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BookOpen, Clock, Pencil, Trash2, User, Users } from "lucide-react";
 import { api } from "../lib/api.js";
+import { canTeach } from "../lib/assign.js";
+import { SubjectSelect } from "../lib/subjects.jsx";
 import { plural } from "../lib/format.js";
 import { Badge, Button, Dialog, Field, Input, Notice, Select, Textarea, cx, useUi } from "../ui/index.jsx";
 
@@ -221,7 +223,7 @@ export function TimetableFormDialog({ open, onClose, onSaved, entry, teachers = 
   }, [open, entry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const teacher = teachers.find((t) => t.id === f.teacherId);
-  const pool = useMemo(() => students.filter((s) => s.teacherId === f.teacherId && (s.active !== false || f.studentIds?.includes(s.id))), [students, f.teacherId, f.studentIds]);
+  const pool = useMemo(() => students.filter((s) => canTeach(s, f.teacherId, f.subject) && (s.active !== false || f.studentIds?.includes(s.id))), [students, f.teacherId, f.subject, f.studentIds]);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v?.target ? v.target.value : v }));
   const toggleDay = (d) => setF((p) => ({ ...p, days: editing ? [d] : p.days.includes(d) ? p.days.filter((x) => x !== d) : [...p.days, d].sort() }));
 
@@ -281,12 +283,7 @@ export function TimetableFormDialog({ open, onClose, onSaved, entry, teachers = 
           />
         </Field>
         <Field label="Subject" required>
-          <Input value={f.subject || ""} onChange={set("subject")} placeholder="e.g. Mathematics" maxLength={80} required list="tt-subjects" />
-          <datalist id="tt-subjects">
-            {(teacher?.subjects || []).map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
+          <SubjectSelect value={f.subject} onChange={set("subject")} only={teacher?.subjects?.length ? teacher.subjects : undefined} />
         </Field>
         <Field label="Students" required className="sm:col-span-2" hint={!f.teacherId ? "Choose the teacher first" : pool.length === 0 ? "No students are assigned to this teacher yet" : f.studentIds?.length > 1 ? "Group slot" : ""}>
           <Select multiple value={f.studentIds || []} onChange={set("studentIds")} options={pool.map((s) => ({ value: s.id, label: s.name, hint: [s.grade, s.board].filter(Boolean).join(" · ") }))} placeholder="Choose students" disabled={!f.teacherId} searchable />

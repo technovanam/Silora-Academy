@@ -128,6 +128,7 @@ router.post(
   "/meetings/:id/live/recording/start",
   ah(async (req, res) => {
     const { m, room } = await loadHost(req);
+    if (m.isDemo) fail(400, "Demo classes are never recorded", "no_recording");
     if (room.recording?.id) {
       // A recording that this browser lost (page reloaded): close it and start a new one
       await finishRecording(room.recording.id).catch(() => {});

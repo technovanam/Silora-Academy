@@ -9,7 +9,7 @@ import config from "../config.js";
 import { db, C } from "../firebase.js";
 import { ah, fail, nowIso, str, toIso, listData, getMany, verifyToken, plural } from "../util.js";
 import { requireRole } from "../middleware.js";
-import { hasPerm, logActivity, audit } from "../services/core.js";
+import { hasPerm, logActivity, audit, assignmentProblem, teacherIdsOf, canonicalSubject, sameSubject } from "../services/core.js";
 import { notify, notifyAdmins } from "../services/notify.js";
 import { storeUpload, deleteStored, fileLink, streamFile, MATERIAL_TYPES, safeFileName } from "../services/files.js";
 
@@ -44,15 +44,19 @@ async function loadMaterial(id) {
   return { id: snap.id, ...snap.data() };
 }
 
-async function validateAssignees(user, teacherId, ids) {
+async function validateAssignees(user, teacherId, ids, subject = "") {
   const list = [...new Set(parseList(ids).map((s) => str(s, 60)).filter(Boolean))];
   if (!list.length) return [];
   const users = await getMany(db, C.users, list);
   for (const id of list) {
     const s = users[id];
     if (!s || s.role !== "student" || s.deletedAt) fail(400, "One of the selected students was not found");
-    if (user.role === "teacher" && s.teacherId !== user.id) fail(403, "You can only assign materials to your own students");
-    if (user.role === "admin" && teacherId && s.teacherId !== teacherId) fail(400, `${s.name} is not assigned to this material's teacher`);
+    if (user.role === "teacher" && !teacherIdsOf(s).includes(user.id)) fail(403, "You can only assign materials to your own students");
+    const forTeacher = user.role === "teacher" ? user.id : teacherId;
+    if (forTeacher) {
+      const problem = assignmentProblem(s, forTeacher, subject, "this material's teacher");
+      if (problem) fail(user.role === "teacher" ? 403 : 400, problem);
+    }
   }
   return list;
 }
@@ -183,7 +187,8 @@ router.post(
     if (!req.file) fail(400, "Choose a file to upload");
     const title = str(req.body.title, 150) || safeFileName(req.file.originalname).replace(/\.[^.]+$/, "");
     const teacherId = req.user.role === "teacher" ? req.user.id : str(req.body.teacherId, 60) || null;
-    const studentIds = await validateAssignees(req.user, teacherId, req.body.studentIds);
+    const subject = await canonicalSubject(req.body.subject, { required: false });
+    const studentIds = await validateAssignees(req.user, teacherId, req.body.studentIds, subject);
     const publishAt = req.body.publishAt ? toIso(req.body.publishAt) : null;
     const scheduled = publishAt && publishAt > nowIso();
 
@@ -193,7 +198,7 @@ router.post(
     const doc = {
       title,
       description: str(req.body.description, 1000),
-      subject: str(req.body.subject, 80),
+      subject,
       folder: str(req.body.folder, 80),
       teacherId,
       uploadedBy: req.user.id,
@@ -231,6 +236,7 @@ router.patch(
     if (!canManage(req.user, m)) fail(404, "Material not found");
     const update = { updatedAt: nowIso() };
     for (const [k, max] of [["title", 150], ["description", 1000], ["subject", 80], ["folder", 80]]) if (k in req.body) update[k] = str(req.body[k], max);
+    if ("subject" in req.body) update.subject = await canonicalSubject(req.body.subject, { required: false, allowInactive: sameSubject(req.body.subject, m.subject) });
     if (update.title === "") delete update.title;
     if ("publishAt" in req.body && m.status !== "published") {
       const publishAt = req.body.publishAt ? toIso(req.body.publishAt) : null;
@@ -276,7 +282,7 @@ router.post(
   ah(async (req, res) => {
     const m = await loadMaterial(req.params.id);
     if (!canManage(req.user, m)) fail(404, "Material not found");
-    const studentIds = await validateAssignees(req.user, m.teacherId, req.body.studentIds);
+    const studentIds = await validateAssignees(req.user, m.teacherId, req.body.studentIds, m.subject || "");
     await db.collection(C.materials).doc(m.id).update({ studentIds, updatedAt: nowIso() });
     if (isLive(m)) await publishMaterial({ ...m, studentIds }, studentIds);
     await logActivity(req, "material.assign", { targetType: "material", targetId: m.id, summary: `Assigned "${m.title}" to ${plural(studentIds.length, "student")}` });

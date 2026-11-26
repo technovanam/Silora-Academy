@@ -8,6 +8,8 @@ import {
   MoreHorizontal, Pencil, Presentation, Trash2, UploadCloud, Users, XCircle, Plus,
 } from "lucide-react";
 import { api } from "../lib/api.js";
+import { canTeach } from "../lib/assign.js";
+import { SubjectSelect } from "../lib/subjects.jsx";
 import { saveFile } from "../lib/download.js";
 import { fmtDate, fmtDateTime, fmtSize, fromLocalInput, fromNow, toLocalInput, plural } from "../lib/format.js";
 import { Badge, Button, Card, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, Progress, SearchInput, Select, Table, Textarea, cx, useAsync, useUi } from "../ui/index.jsx";
@@ -198,7 +200,7 @@ export function MaterialDialog({ open, onClose, onSaved, item, mode, students = 
     );
   }, [open, item]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pool = useMemo(() => (mode === "admin" ? students.filter((s) => !f.teacherId || s.teacherId === f.teacherId) : students), [students, f.teacherId, mode]);
+  const pool = useMemo(() => (mode === "admin" ? students.filter((s) => !f.teacherId || canTeach(s, f.teacherId, f.subject)) : students), [students, f.teacherId, f.subject, mode]);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v?.target ? v.target.value : v }));
 
   const save = async (e) => {
@@ -276,7 +278,7 @@ export function MaterialDialog({ open, onClose, onSaved, item, mode, students = 
           <Input value={f.title || ""} onChange={set("title")} maxLength={150} required={editing} placeholder="e.g. Chapter 4 worksheet" />
         </Field>
         <Field label="Subject">
-          <Input value={f.subject || ""} onChange={set("subject")} maxLength={80} placeholder="e.g. Mathematics" />
+          <SubjectSelect value={f.subject} onChange={set("subject")} placeholder="No particular subject" clearable />
         </Field>
         <Field label="Folder" hint={folders.length ? `Existing: ${folders.slice(0, 4).join(", ")}${folders.length > 4 ? "…" : ""}` : "Group related files, e.g. Algebra"}>
           <Input value={f.folder || ""} onChange={set("folder")} maxLength={80} placeholder="e.g. Algebra" list="mat-folders" />

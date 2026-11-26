@@ -9,8 +9,9 @@ import config from "../config.js";
 import { db, C } from "../firebase.js";
 import { ah, fail, nowIso, str, toIso, addMinutes, addDays, listData, getMany } from "../util.js";
 import { requireRole } from "../middleware.js";
-import { hasPerm, getUser, logActivity, audit } from "../services/core.js";
+import { hasPerm, getUser, logActivity, audit, assignmentProblem, canonicalSubject, sameSubject } from "../services/core.js";
 import { notify, notifyAdmins } from "../services/notify.js";
+import { recomputeForMeeting } from "../services/teacherPayments.js";
 
 const router = Router();
 export const MAX_GROUP = config.maxClassSize;
@@ -30,6 +31,7 @@ export function canAccess(user, m) {
   if (user.role === "admin") return canSeeAll(user);
   if (user.role === "teacher") return m.teacherId === user.id;
   if (user.role === "student") return (m.studentIds || []).includes(user.id);
+  if (user.role === "guest") return !!m.isDemo && m.id === user.meetingId; // demo guest link
   return false;
 }
 
@@ -39,6 +41,8 @@ function shape(m, viewer, names) {
     id: m.id,
     title: m.title,
     subject: m.subject || "",
+    isDemo: !!m.isDemo,
+    demoInfo: m.isDemo ? m.demoInfo || null : undefined,
     teacherId: m.teacherId,
     teacherName: names[m.teacherId] || m.teacherName || "Teacher",
     startAt: m.startAt,
@@ -47,6 +51,7 @@ function shape(m, viewer, names) {
     status: effectiveStatus(m),
     notes: m.notes || "",
     seriesId: m.seriesId || null,
+    sessionId: m.sessionId || null,
     isGroup: (m.studentIds || []).length > 1,
     studentCount: (m.studentIds || []).length,
     cancelledReason: m.cancelledReason || null,
@@ -76,7 +81,9 @@ async function namesFor(meetings) {
   return Object.fromEntries(Object.values(users).map((u) => [u.id, u.name]));
 }
 
-async function validateStudents(teacherId, studentIds) {
+// A class can belong to an academic session (not archived; a teacher only to their own sessions)
+
+async function validateStudents(teacherId, studentIds, subject = "") {
   const ids = [...new Set((studentIds || []).map((s) => str(s, 60)).filter(Boolean))];
   if (!ids.length) fail(400, "Choose at least one student");
   if (ids.length > MAX_GROUP) fail(400, `A class can have at most ${MAX_GROUP} students`);
@@ -84,16 +91,28 @@ async function validateStudents(teacherId, studentIds) {
   for (const id of ids) {
     const s = users[id];
     if (!s || s.role !== "student" || s.deletedAt) fail(400, "One of the selected students was not found");
-    if (s.teacherId !== teacherId) fail(400, `${s.name} is not assigned to this teacher`);
+    const problem = assignmentProblem(s, teacherId, subject);
+    if (problem) fail(400, problem);
     if (!s.active) fail(400, `${s.name}'s account is deactivated`);
   }
   return ids;
 }
 
-async function assertNoClash(teacherId, startAt, endAt, ignoreId) {
+// No two scheduled classes at the same time for the teacher, or for any of the students
+export async function assertNoClash(teacherId, startAt, endAt, ignoreId, studentIds = []) {
+  const live = (m) => m.id !== ignoreId && m.status === "scheduled" && m.startAt < endAt && m.endAt > startAt;
   const qs = await db.collection(C.meetings).where("teacherId", "==", teacherId).get();
-  const clash = listData(qs).find((m) => m.id !== ignoreId && m.status === "scheduled" && m.startAt < endAt && m.endAt > startAt);
+  const clash = listData(qs).find(live);
   if (clash) fail(409, `The teacher already has "${clash.title}" at ${fmt(clash.startAt)}`);
+  const ids = [...new Set(studentIds)].filter(Boolean);
+  for (let i = 0; i < ids.length; i += 30) {
+    const ss = await db.collection(C.meetings).where("studentIds", "array-contains-any", ids.slice(i, i + 30)).get();
+    const hit = listData(ss).find(live);
+    if (hit) {
+      const who = (await getMany(db, C.users, hit.studentIds.filter((x) => ids.includes(x)).slice(0, 1)))[hit.studentIds.find((x) => ids.includes(x))];
+      fail(409, `${who?.name || "A student"} already has "${hit.title}"${hit.subject ? ` (${hit.subject})` : ""} at ${fmt(hit.startAt)}`);
+    }
+  }
 }
 
 // ---- List / calendar ------------------------------------------------------------
@@ -136,7 +155,9 @@ router.post(
     const teacherId = req.user.role === "teacher" ? req.user.id : str(req.body.teacherId, 60);
     const teacher = await getUser(teacherId);
     if (!teacher || teacher.role !== "teacher" || teacher.deletedAt) fail(400, "Choose a teacher");
-    const studentIds = await validateStudents(teacherId, req.body.studentIds);
+    // The subject comes from the academy's list; it decides which session the class counts towards
+    const subject = await canonicalSubject(req.body.subject);
+    const studentIds = await validateStudents(teacherId, req.body.studentIds, subject);
     const title = str(req.body.title, 120);
     if (!title) fail(400, "Give the class a title");
     const durationMin = Math.round(Number(req.body.durationMin || 60));
@@ -151,10 +172,10 @@ router.post(
     for (let i = 0; i < repeatWeeks; i++) {
       const startAt = addDays(firstStart, i * 7).toISOString();
       const endAt = addMinutes(startAt, durationMin).toISOString();
-      await assertNoClash(teacherId, startAt, endAt);
+      await assertNoClash(teacherId, startAt, endAt, undefined, studentIds);
       created.push({
         title,
-        subject: str(req.body.subject, 80),
+        subject,
         notes: str(req.body.notes, 1000),
         teacherId,
         studentIds,
@@ -194,19 +215,24 @@ router.patch(
     const snap = await ref.get();
     if (!snap.exists) fail(404, "Class not found");
     const m = { id: snap.id, ...snap.data() };
+    if (m.isDemo) fail(400, "Demo classes are managed under Demo requests", "demo");
     if (!canAccess(req.user, m)) fail(404, "Class not found");
     if (m.status !== "scheduled") fail(400, "Only scheduled classes can be edited");
 
     const update = {};
     if ("title" in req.body) update.title = str(req.body.title, 120) || m.title;
-    if ("subject" in req.body) update.subject = str(req.body.subject, 80);
+    if ("subject" in req.body) update.subject = await canonicalSubject(req.body.subject, { allowInactive: sameSubject(req.body.subject, m.subject) });
     if ("notes" in req.body) update.notes = str(req.body.notes, 1000);
     const teacherId = req.user.role === "admin" && req.body.teacherId ? str(req.body.teacherId, 60) : m.teacherId;
-    if (req.body.studentIds) update.studentIds = await validateStudents(teacherId, req.body.studentIds);
+    const subject = "subject" in update ? update.subject : m.subject || "";
+    if (req.body.studentIds) update.studentIds = await validateStudents(teacherId, req.body.studentIds, subject);
+    // Same time, new students or a new teacher: they must be free then too
+    if ((update.studentIds || teacherId !== m.teacherId) && !(req.user.role === "admin" && (req.body.startAt || req.body.durationMin)))
+      await assertNoClash(teacherId, m.startAt, m.endAt, m.id, (update.studentIds || []).filter((x) => !(m.studentIds || []).includes(x)));
     if (teacherId !== m.teacherId) {
       update.teacherId = teacherId;
-      if (!req.body.studentIds) await validateStudents(teacherId, m.studentIds);
-    }
+      if (!req.body.studentIds) await validateStudents(teacherId, m.studentIds, subject);
+    } else if (!req.body.studentIds && "subject" in update && update.subject !== (m.subject || "")) await validateStudents(teacherId, m.studentIds, subject);
 
     let rescheduled = false;
     if (req.user.role === "admin" && (req.body.startAt || req.body.durationMin)) {
@@ -214,7 +240,7 @@ router.patch(
       const durationMin = Math.round(Number(req.body.durationMin || m.durationMin));
       if (!(durationMin >= 15 && durationMin <= 240)) fail(400, "Duration must be between 15 and 240 minutes");
       const endAt = addMinutes(startAt, durationMin).toISOString();
-      await assertNoClash(teacherId, startAt, endAt, m.id);
+      await assertNoClash(teacherId, startAt, endAt, m.id, update.studentIds || m.studentIds || []);
       if (startAt !== m.startAt) {
         rescheduled = true;
         update.previousStartAt = m.startAt;
@@ -228,6 +254,8 @@ router.patch(
     await ref.update(update);
 
     const after = { ...m, ...update };
+    // A new date, subject or teacher can move the class into another session: recount both
+    await recomputeForMeeting(after, m);
     if (rescheduled) {
       await notify([...after.studentIds, after.teacherId], {
         type: "class_rescheduled",
@@ -244,6 +272,7 @@ router.patch(
 
 async function cancelMeeting(req, m, reason) {
   await db.collection(C.meetings).doc(m.id).update({ status: "cancelled", cancelledReason: reason || "", cancelledAt: nowIso(), cancelledBy: req.user.id, pendingRequest: null });
+  await recomputeForMeeting(m);
   await notify([...(m.studentIds || []), m.teacherId], {
     type: "class_cancelled",
     title: `Class cancelled: ${m.title}`,
@@ -261,6 +290,7 @@ router.post(
     const snap = await db.collection(C.meetings).doc(req.params.id).get();
     if (!snap.exists) fail(404, "Class not found");
     const m = { id: snap.id, ...snap.data() };
+    if (m.isDemo) fail(400, "Demo classes are managed under Demo requests", "demo");
     if (m.status !== "scheduled") fail(400, "This class is not scheduled");
     await cancelMeeting(req, m, str(req.body.reason, 300));
     await audit(req, "class.cancel", { targetType: "meeting", targetId: m.id, summary: `Cancelled "${m.title}" (${fmt(m.startAt)})` });
@@ -312,6 +342,8 @@ router.post(
     const snap = await db.collection(C.meetings).doc(meetingId).get();
     if (!snap.exists) fail(404, "Class not found");
     const m = { id: snap.id, ...snap.data() };
+    if (m.isDemo) fail(400, "Demo classes are managed under Demo requests", "demo");
+    if (m.isDemo) fail(400, "Demo classes are managed under Demo requests", "demo");
     if (m.teacherId !== req.user.id) fail(404, "Class not found");
     if (m.status !== "scheduled" || m.endAt < nowIso()) fail(400, "Only upcoming classes can be changed");
     if (m.pendingRequest) fail(409, "There's already a pending request for this class");
@@ -363,7 +395,7 @@ router.post(
         const startAt = r.proposedStartAt;
         const durationMin = r.proposedDurationMin || m.durationMin;
         const endAt = addMinutes(startAt, durationMin).toISOString();
-        await assertNoClash(m.teacherId, startAt, endAt, m.id);
+        await assertNoClash(m.teacherId, startAt, endAt, m.id, m.studentIds || []);
         await ms.ref.update({ startAt, endAt, durationMin, previousStartAt: m.startAt, reminderSentAt: null, pendingRequest: null, updatedAt: nowIso() });
         await notify([...(m.studentIds || []), m.teacherId], {
           type: "class_rescheduled",

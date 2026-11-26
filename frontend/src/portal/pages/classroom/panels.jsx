@@ -25,7 +25,7 @@ export function SidePanel({ open, title, onClose, children, footer }) {
   );
 }
 
-const roleTag = (p) => (p.isHost ? "Running the class" : p.role === "teacher" ? "Teacher" : p.role === "admin" ? "Admin" : "");
+const roleTag = (p) => (p.isHost ? "Running the class" : p.role === "teacher" ? "Teacher" : p.role === "admin" ? "Admin" : p.role === "guest" ? "Demo guest" : "");
 
 // ---------------------------------------------------------------- People
 export function PeoplePanel({ people, meId, isHost, waiting = [], onAdmit, menuFor, onMuteAll, onLowerAll }) {
@@ -67,14 +67,14 @@ export function PeoplePanel({ people, meId, isHost, waiting = [], onAdmit, menuF
         </section>
       )}
 
-      {isHost && (hands.length > 0 || people.some((p) => p.canSpeak && p.role === "student")) && (
+      {isHost && (hands.length > 0 || people.some((p) => p.canSpeak && ["student", "guest"].includes(p.role))) && (
         <div className="flex flex-wrap gap-2 px-2">
           {hands.length > 0 && (
             <button type="button" onClick={onLowerAll} className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] px-3 py-1.5 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa]">
               <Hand className="h-4 w-4" /> Lower all hands ({hands.length})
             </button>
           )}
-          {people.some((p) => p.canSpeak && p.role === "student") && (
+          {people.some((p) => p.canSpeak && ["student", "guest"].includes(p.role)) && (
             <button type="button" onClick={onMuteAll} className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] px-3 py-1.5 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa]">
               <MicOff className="h-4 w-4" /> Stop all students speaking
             </button>
@@ -95,7 +95,7 @@ export function PeoplePanel({ people, meId, isHost, waiting = [], onAdmit, menuF
                     {p.name}
                     {p.id === meId && " (You)"}
                   </p>
-                  {(roleTag(p) || p.conn || p.canSpeak) && <p className={cx("truncate text-xs", p.conn ? "text-[#b06000]" : "text-[#5f6368]")}>{p.conn || roleTag(p) || (p.role === "student" && p.canSpeak ? "Allowed to speak" : "")}</p>}
+                  {(roleTag(p) || p.conn || p.canSpeak) && <p className={cx("truncate text-xs", p.conn ? "text-[#b06000]" : "text-[#5f6368]")}>{p.conn || roleTag(p) || (["student", "guest"].includes(p.role) && p.canSpeak ? "Allowed to speak" : "")}</p>}
                 </div>
                 {p.hand && <Hand className="h-4 w-4 shrink-0 text-[#e37400]" aria-label="Hand raised" />}
                 {p.camOn ? <Video className="h-4 w-4 shrink-0 text-[#5f6368]" aria-label="Camera on" /> : <VideoOff className="h-4 w-4 shrink-0 text-[#bdc1c6]" aria-label="Camera off" />}

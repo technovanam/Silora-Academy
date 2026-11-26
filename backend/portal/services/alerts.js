@@ -1,21 +1,22 @@
 // ============================================================================
 // INACTIVITY ALERTS – students/teachers who haven't signed in, materials that
-// stay unopened, and missing weekly attendance. Computed on demand.
+// stay unopened, and attendance forms teachers haven't submitted. Computed on demand.
 // ============================================================================
 import { db, C } from "../firebase.js";
-import { listData, weekStartOf, shiftWeek, plural } from "../util.js";
-import { getSettings, usersByRole } from "./core.js";
+import { listData, plural } from "../util.js";
+import { getSettings, usersByRole, teacherIdsOf } from "./core.js";
+import { pendingForms } from "../routes/attendance.js";
 
 const daysSince = (iso) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null);
 
 export async function computeAlerts() {
   const settings = await getSettings();
-  const [students, teachers, materials, opens, attendance] = await Promise.all([
+  const [students, teachers, materials, opens, forms] = await Promise.all([
     usersByRole("student", { activeOnly: true }),
     usersByRole("teacher", { activeOnly: true }),
     db.collection(C.materials).where("status", "==", "published").get().then(listData),
     db.collection(C.materialOpens).get().then(listData),
-    db.collection(C.attendance).where("weekStart", "==", shiftWeek(weekStartOf(new Date()), -1)).get().then(listData),
+    pendingForms(),
   ]);
   const live = (u) => !u.deletedAt;
   const tNames = Object.fromEntries(teachers.map((t) => [t.id, t.name]));
@@ -32,7 +33,7 @@ export async function computeAlerts() {
         userId: u.id,
         title: `${u.name} hasn't signed in for ${plural(d, "day")}`,
         detail: u.lastLoginAt ? `Last sign-in ${u.lastLoginAt.slice(0, 10)}` : "Never signed in",
-        teacherName: u.role === "student" ? tNames[u.teacherId] || "Unassigned" : undefined,
+        teacherName: u.role === "student" ? teacherIdsOf(u).map((id) => tNames[id]).filter(Boolean).join(", ") || "Unassigned" : undefined,
         days: d,
       });
     }
@@ -57,18 +58,18 @@ export async function computeAlerts() {
       });
   }
 
-  const submitted = new Set(attendance.map((a) => a.studentId));
-  const lastWeek = shiftWeek(weekStartOf(new Date()), -1);
-  const missing = students.filter((s) => live(s) && !submitted.has(s.id) && (!s.createdAt || weekStartOf(s.createdAt) <= lastWeek));
-  if (missing.length)
+  // Attendance forms the teacher still hasn't submitted after the reminder time
+  const overdue = forms.pending.filter((f) => f.overdue);
+  if (overdue.length) {
+    const byTeacher = [...new Set(overdue.map((f) => f.teacherName || "Teacher"))];
     alerts.push({
-      id: `attendance_${lastWeek}`,
+      id: `attendance_forms_${overdue.length}`,
       type: "attendance_missing",
       severity: "medium",
-      title: `${missing.length} student${missing.length > 1 ? "s" : ""} didn't submit attendance for the week of ${lastWeek}`,
-      detail: missing.map((s) => s.name).slice(0, 6).join(", ") + (missing.length > 6 ? "…" : ""),
-      weekStart: lastWeek,
+      title: `${plural(overdue.length, "attendance form")} not submitted by teachers`,
+      detail: byTeacher.slice(0, 6).join(", ") + (byTeacher.length > 6 ? "…" : ""),
     });
+  }
 
   const rank = { high: 0, medium: 1, low: 2 };
   return alerts.sort((a, b) => rank[a.severity] - rank[b.severity] || (b.days || 0) - (a.days || 0));

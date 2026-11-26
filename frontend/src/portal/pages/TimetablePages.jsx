@@ -6,6 +6,7 @@
 import React, { useMemo, useState } from "react";
 import { CalendarRange, LayoutGrid, List, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api.js";
+import { teacherIdsOf } from "../lib/assign.js";
 import { plural } from "../lib/format.js";
 import { Badge, Button, Card, Empty, ErrorBox, IconButton, Loading, Menu, PageHeader, Segmented, Select, Table, useAsync, useUi } from "../ui/index.jsx";
 import { TimetableDetail, TimetableFormDialog, TimetableGrid, dayLabel, fmtLength, fmtRange, tzLabel } from "../components/timetable.jsx";
@@ -34,7 +35,7 @@ export function AdminTimetable() {
   const students = useMemo(() => dir.data?.students || [], [dir.data]);
   const all = useMemo(() => tt.data?.entries || [], [tt.data]);
   const entries = useMemo(() => all.filter((e) => (!teacherId || e.teacherId === teacherId) && (!studentId || e.studentIds?.includes(studentId))), [all, teacherId, studentId]);
-  const studentOptions = useMemo(() => students.filter((s) => !teacherId || s.teacherId === teacherId).map((s) => ({ value: s.id, label: s.name, hint: s.active ? "" : "Deactivated" })), [students, teacherId]);
+  const studentOptions = useMemo(() => students.filter((s) => !teacherId || teacherIdsOf(s).includes(teacherId)).map((s) => ({ value: s.id, label: s.name, hint: s.active ? "" : "Deactivated" })), [students, teacherId]);
   const reload = () => tt.reload(true);
   const filtered = teacherId || studentId;
 

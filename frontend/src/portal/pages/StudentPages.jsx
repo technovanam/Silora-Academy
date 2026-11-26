@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Download, Eye, FolderOpen, Heart, History, Megaphone, Sparkles, Star, TrendingUp } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
-import { fmtDate, fmtDateTime, fmtDay, fmtSize, fmtTime, fmtWeek, fromNow, plural } from "../lib/format.js";
-import { Badge, Button, Card, CardTitle, Empty, ErrorBox, Field, Loading, Notice, PageHeader, Progress, SearchInput, Segmented, Select, StatCard, Textarea, Input, cx, useAsync, useUi } from "../ui/index.jsx";
+import { fmtDate, fmtDay, fmtSize, fmtTime, fromNow, plural } from "../lib/format.js";
+import { Badge, Button, Card, CardTitle, Empty, ErrorBox, Field, Loading, Notice, PageHeader, Pager, Progress, SearchInput, Segmented, Select, StatCard, Textarea, Input, cx, useAsync, usePaged, useUi } from "../ui/index.jsx";
 import { ClassRow, JoinButton, classState, useNow } from "../components/classes.jsx";
 import { FileIcon, PreviewDialog, downloadMaterial, markMaterialOpened } from "../components/materials.jsx";
 
@@ -24,7 +24,12 @@ export function StudentDashboard() {
   const js = next && classState(next);
   return (
     <>
-      <PageHeader title={`${greeting()}, ${(user.name || "").split(" ")[0]}`} subtitle={data.teacherName ? `Your teacher: ${data.teacherName}` : "Your teacher will be assigned soon."} />
+      <PageHeader title={`${greeting()}, ${(user.name || "").split(" ")[0]}`} subtitle={
+          data.teachers?.length
+            ? `${data.teachers.length > 1 ? "Your teachers" : "Your teacher"}: ${data.teachers.map((t) => (t.subject ? `${t.subject} – ${t.name}` : t.name)).join(" · ")}`
+            : "Your teachers will be assigned soon."
+        }
+      />
 
       {data.announcements?.length > 0 && (
         <Link to="/portal/announcements" className="mb-6 flex items-center gap-3 rounded-2xl border border-brand/40 bg-brand-soft px-4 py-3 transition hover:shadow-sm">
@@ -79,15 +84,23 @@ export function StudentDashboard() {
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
           <Link to="/portal/student/attendance" className="block">
-            <Card className={cx("h-full transition hover:shadow-md", !data.attendance.submitted && "border-amber-300 bg-amber-50/50")}>
+            <Card className="h-full transition hover:shadow-md">
               <div className="flex items-start gap-4">
-                <span className={cx("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", data.attendance.submitted ? "bg-emerald-50 text-emerald-600" : "bg-amber-100 text-amber-700")}>
-                  {data.attendance.submitted ? <CheckCircle2 className="h-5 w-5" /> : <ClipboardCheck className="h-5 w-5" />}
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <ClipboardCheck className="h-5 w-5" />
                 </span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-navy">Weekly attendance</p>
-                  <p className="text-sm text-muted">{data.attendance.submitted ? "Submitted for this week – thank you!" : `Not submitted yet for ${fmtWeek(data.attendance.weekStart)}`}</p>
-                  {!data.attendance.submitted && <span className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-navy">Fill in the form <ArrowRight className="h-4 w-4" /></span>}
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-navy">Attendance</p>
+                  {data.attendance.conducted ? (
+                    <>
+                      <p className="text-sm text-muted">
+                        {data.attendance.attended} of {plural(data.attendance.conducted, "class", "classes")} attended · {data.attendance.percent}%
+                      </p>
+                      <Progress value={data.attendance.percent} tone={data.attendance.percent >= 75 ? "green" : "amber"} className="mt-2" />
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted">Your teacher records attendance after each class.</p>
+                  )}
                 </div>
               </div>
             </Card>
@@ -161,41 +174,53 @@ export function StudentDashboard() {
 // ---- Classes ----------------------------------------------------------------------
 export function StudentClasses() {
   const [tab, setTab] = useState("upcoming");
+  const [subject, setSubject] = useState(null);
   const { data, loading, error, reload } = useAsync(() => api.get("/meetings"), []);
   useNow(30000);
-  const list = useMemo(() => {
-    const all = data?.meetings || [];
+  const groups = useMemo(() => {
+    const all = (data?.meetings || []).filter((m) => !subject || m.subject === subject);
     const now = new Date().toISOString();
-    if (tab === "upcoming") return all.filter((m) => m.status === "scheduled" && classState(m) !== "ended");
-    if (tab === "past") return all.filter((m) => m.status !== "cancelled" && (m.endAt < now || m.status === "completed")).reverse();
-    return all.filter((m) => m.status === "cancelled").reverse();
-  }, [data, tab]);
+    return {
+      upcoming: all.filter((m) => m.status === "scheduled" && classState(m) !== "ended"),
+      past: all.filter((m) => m.status !== "cancelled" && (m.endAt < now || m.status === "completed")).reverse(),
+      cancelled: all.filter((m) => m.status === "cancelled").reverse(),
+    };
+  }, [data, subject]);
+  const list = groups[tab];
+  const subjects = [...new Set((data?.meetings || []).map((m) => m.subject).filter(Boolean))].sort();
+  const pg = usePaged(list, 10, [10, 25, 50]);
   return (
     <>
       <PageHeader title="My classes" subtitle="Join live classes here. The Join button opens 15 minutes before each class." />
-      <Segmented
-        className="mb-4"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "upcoming", label: "Upcoming" },
-          { value: "past", label: "Past" },
-          { value: "cancelled", label: "Cancelled" },
-        ]}
-      />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "upcoming", label: "Upcoming", count: data ? groups.upcoming.length : undefined },
+            { value: "past", label: "Past", count: data ? groups.past.length : undefined },
+            { value: "cancelled", label: "Cancelled", count: data ? groups.cancelled.length : undefined },
+          ]}
+        />
+        <div className="flex-1" />
+        {subjects.length > 1 && <Select className="w-full sm:w-52" value={subject} onChange={setSubject} options={subjects.map((x) => ({ value: x, label: x }))} placeholder="All subjects" clearable />}
+      </div>
       <ErrorBox error={error} onRetry={reload} />
       {loading ? (
         <Loading />
       ) : list.length === 0 ? (
         <Card>
-          <Empty icon={CalendarDays} title={tab === "upcoming" ? "No upcoming classes" : tab === "past" ? "No past classes yet" : "No cancelled classes"} />
+          <Empty icon={CalendarDays} title={tab === "upcoming" ? "No upcoming classes" : tab === "past" ? "No past classes yet" : "No cancelled classes"} text={subject ? `Nothing for ${subject} here.` : ""} />
         </Card>
       ) : (
-        <div className="space-y-3">
-          {list.map((m) => (
-            <ClassRow key={m.id} m={m} showStudents={false} showTeacher actions={tab === "upcoming" ? <JoinButton m={m} size="sm" /> : null} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {pg.rows.map((m) => (
+              <ClassRow key={m.id} m={m} showStudents={false} showTeacher actions={tab === "upcoming" ? <JoinButton m={m} size="sm" /> : null} />
+            ))}
+          </div>
+          {pg.show && <Card flush className="mt-4"><Pager {...pg.pager} /></Card>}
+        </>
       )}
     </>
   );
@@ -212,6 +237,7 @@ export function StudentMaterials() {
   const all = data?.materials || [];
   const subjects = [...new Set(all.map((m) => m.subject).filter(Boolean))];
   const list = all.filter((m) => (tab === "new" ? !m.opened : tab === "fav" ? m.favourite : true) && (!subject || m.subject === subject) && (!q || `${m.title} ${m.subject} ${m.folder} ${m.teacherName}`.toLowerCase().includes(q.toLowerCase())));
+  const pg = usePaged(list, 12, [12, 24, 48]);
 
   const [saving, setSaving] = useState({}); // material id → download progress
   // "Opened" only once the file was really shown or fully saved – not on the button click
@@ -268,11 +294,12 @@ export function StudentMaterials() {
         <Loading />
       ) : list.length === 0 ? (
         <Card>
-          <Empty icon={FolderOpen} title={tab === "fav" ? "No favourites yet" : tab === "new" ? "You've opened everything" : "No materials yet"} text={tab === "fav" ? "Tap the heart on a material to keep it here." : ""} />
+          <Empty icon={FolderOpen} title={q || subject ? "No matches" : tab === "fav" ? "No favourites yet" : tab === "new" ? "You've opened everything" : "No materials yet"} text={q || subject ? "Try another search or subject." : tab === "fav" ? "Tap the heart on a material to keep it here." : ""} />
         </Card>
       ) : (
+        <>
         <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          {list.map((m) => (
+          {pg.rows.map((m) => (
             <Card key={m.id} className="flex flex-col">
               <div className="flex items-start gap-3">
                 <FileIcon kind={m.file?.kind} />
@@ -309,142 +336,10 @@ export function StudentMaterials() {
             </Card>
           ))}
         </div>
+        {pg.show && <Card flush className="mt-4"><Pager {...pg.pager} /></Card>}
+        </>
       )}
       <PreviewDialog item={preview} onClose={() => setPreview(null)} onOpened={(how) => preview && markOpened(preview.id, how)} />
-    </>
-  );
-}
-
-// ---- Weekly attendance -------------------------------------------------------------
-const WEEKEND = [
-  { value: "yes", label: "Yes, attended" },
-  { value: "partial", label: "Partly" },
-  { value: "no", label: "No" },
-];
-const STATUS = {
-  submitted: ["green", "Submitted"],
-  late: ["amber", "Submitted late"],
-  corrected: ["blue", "Reviewed by academy"],
-  open: ["gold", "Open"],
-  missing: ["red", "Not submitted"],
-};
-
-function AttendanceForm({ week, onSaved }) {
-  const ui = useUi();
-  const e = week.entry || {};
-  const [f, setF] = useState({ weekendAttendance: e.weekendAttendance || null, classesAttended: e.classesAttended ?? "", lessonsCovered: e.lessonsCovered || "", rating: e.rating || 0, review: e.review || "", remarks: e.remarks || "" });
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (v) => setF((p) => ({ ...p, [k]: v?.target ? v.target.value : v }));
-  const submit = async (ev) => {
-    ev.preventDefault();
-    if (!f.weekendAttendance) return ui.error(new Error("Please answer the weekend attendance question"));
-    setBusy(true);
-    try {
-      await api.put(`/attendance/me/${week.weekStart}`, { ...f, classesAttended: Number(f.classesAttended) });
-      ui.toast(week.entry ? "Attendance updated" : "Attendance submitted – thank you!");
-      onSaved();
-    } catch (err) {
-      ui.error(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <form onSubmit={submit} className="grid gap-5 sm:grid-cols-2">
-      <Field label="Did you attend your weekend class?" required className="sm:col-span-2">
-        <div className="grid grid-cols-3 gap-2">
-          {WEEKEND.map((o) => (
-            <button key={o.value} type="button" onClick={() => set("weekendAttendance")(o.value)} className={cx("rounded-xl border px-3 py-2.5 text-sm font-semibold transition", f.weekendAttendance === o.value ? "border-brand bg-brand-soft text-navy ring-2 ring-brand/30" : "border-line text-slate-600 hover:border-slate-300")}>
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </Field>
-      <Field label="Classes attended this week" required>
-        <Input type="number" min={0} max={50} inputMode="numeric" value={f.classesAttended} onChange={set("classesAttended")} required placeholder="e.g. 3" />
-      </Field>
-      <Field label="How were the classes?">
-        <div className="flex h-11 items-center gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} type="button" onClick={() => set("rating")(f.rating === n ? 0 : n)} aria-label={`${n} star${n > 1 ? "s" : ""}`} className="rounded-lg p-1 transition hover:bg-surface">
-              <Star className={cx("h-7 w-7", n <= f.rating ? "fill-brand text-brand" : "text-slate-300")} />
-            </button>
-          ))}
-        </div>
-      </Field>
-      <Field label="Lessons covered" required className="sm:col-span-2">
-        <Textarea rows={3} value={f.lessonsCovered} onChange={set("lessonsCovered")} required maxLength={2000} placeholder="Which topics did you learn this week?" />
-      </Field>
-      <Field label="Review" className="sm:col-span-2">
-        <Textarea rows={2} value={f.review} onChange={set("review")} maxLength={2000} placeholder="What went well? What was difficult?" />
-      </Field>
-      <Field label="Remarks (optional)" className="sm:col-span-2">
-        <Textarea rows={2} value={f.remarks} onChange={set("remarks")} maxLength={2000} placeholder="Anything else you'd like the academy to know" />
-      </Field>
-      <div className="sm:col-span-2">
-        <Button type="submit" size="lg" loading={busy} icon={CheckCircle2}>
-          {week.entry ? "Update attendance" : "Submit attendance"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-export function StudentAttendance() {
-  const { data, loading, error, reload } = useAsync(() => api.get("/attendance/me"), []);
-  const [selected, setSelected] = useState(null);
-  if (loading) return <Loading />;
-  if (error) return <ErrorBox error={error} onRetry={reload} />;
-  const weeks = data.weeks;
-  const current = weeks.find((w) => w.weekStart === (selected || data.currentWeek)) || weeks[0];
-  const pending = weeks.filter((w) => w.editable && !w.entry);
-  return (
-    <>
-      <PageHeader title="Weekly attendance" subtitle="Fill in one short form each week. You can edit it until the end of the following week." />
-      {pending.length > 0 && <Notice tone="warn" className="mb-6">You have {pending.length} week{pending.length > 1 ? "s" : ""} waiting: {pending.map((w) => fmtWeek(w.weekStart)).join(", ")}.</Notice>}
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <Card>
-          <CardTitle
-            icon={ClipboardCheck}
-            title={`Week of ${fmtWeek(current.weekStart)}`}
-            subtitle={current.entry ? `Submitted ${fmtDateTime(current.entry.submittedAt)}${current.entry.updatedAt !== current.entry.submittedAt ? ` · edited ${fromNow(current.entry.updatedAt)}` : ""}` : "Not submitted yet"}
-            action={<Badge tone={STATUS[current.status]?.[0]}>{STATUS[current.status]?.[1]}</Badge>}
-          />
-          {current.editable ? (
-            <AttendanceForm key={current.weekStart + (current.entry?.updatedAt || "")} week={current} onSaved={reload} />
-          ) : current.entry ? (
-            <>
-              {current.entry.correctedAt && <Notice className="mb-4">The academy reviewed this entry{current.entry.correctionReason ? `: ${current.entry.correctionReason}` : ""}.</Notice>}
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <Detail label="Weekend attendance" value={WEEKEND.find((w) => w.value === current.entry.weekendAttendance)?.label} />
-                <Detail label="Classes attended" value={current.entry.classesAttended} />
-                <Detail label="Lessons covered" value={current.entry.lessonsCovered} wide />
-                <Detail label="Rating" value={current.entry.rating ? "★".repeat(current.entry.rating) : "—"} />
-                <Detail label="Review" value={current.entry.review} wide />
-                <Detail label="Remarks" value={current.entry.remarks} wide />
-              </dl>
-            </>
-          ) : (
-            <Empty icon={ClipboardCheck} title="This week wasn't submitted" text="Forms can only be filled in for this week and last week." />
-          )}
-        </Card>
-        <Card>
-          <CardTitle icon={History} title="History" subtitle="Tap a week to see it" />
-          <ul className="space-y-1.5">
-            {weeks.map((w) => (
-              <li key={w.weekStart}>
-                <button onClick={() => setSelected(w.weekStart)} className={cx("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition", w.weekStart === current.weekStart ? "bg-surface ring-1 ring-line" : "hover:bg-surface")}>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-navy">{fmtWeek(w.weekStart)}</span>
-                    {w.weekStart === data.currentWeek && <span className="block text-xs text-muted">This week</span>}
-                  </span>
-                  <Badge tone={STATUS[w.status]?.[0]}>{STATUS[w.status]?.[1]}</Badge>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      </div>
     </>
   );
 }
@@ -462,6 +357,10 @@ function Detail({ label, value, wide }) {
 const LESSON_STATUS = { completed: ["green", "Completed"], in_progress: ["blue", "In progress"], planned: ["gray", "Planned"] };
 export function StudentProgress() {
   const { data, loading, error, reload } = useAsync(() => api.get("/lessons"), []);
+  const [subject, setSubject] = useState(null);
+  const [status, setStatus] = useState("all");
+  const shown = (data?.lessons || []).filter((l) => (!subject || l.subject === subject) && (status === "all" || l.status === status));
+  const pg = usePaged(shown, 10, [10, 25, 50]);
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   const { lessons, summary } = data;
@@ -492,14 +391,21 @@ export function StudentProgress() {
         </Card>
       )}
       <Card padded={false}>
-        <div className="border-b border-line px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 border-b border-line px-5 py-4 sm:px-6 lg:flex-row lg:items-center">
           <h2 className="font-bold text-navy">Lessons</h2>
+          <div className="flex-1" />
+          {lessons.length > 0 && (
+            <>
+              <Segmented size="sm" value={status} onChange={setStatus} options={[{ value: "all", label: "All", count: lessons.length }, ...Object.entries(LESSON_STATUS).map(([value, [, label]]) => ({ value, label, count: lessons.filter((l) => l.status === value).length }))]} />
+              {summary.subjects.length > 1 && <Select className="w-full lg:w-48" value={subject} onChange={setSubject} options={summary.subjects.map((x) => ({ value: x.subject, label: x.subject }))} placeholder="All subjects" clearable />}
+            </>
+          )}
         </div>
-        {lessons.length === 0 ? (
-          <Empty icon={BookOpen} title="No lessons recorded yet" />
+        {shown.length === 0 ? (
+          <Empty icon={BookOpen} title={lessons.length ? "No lessons match" : "No lessons recorded yet"} />
         ) : (
           <ul className="divide-y divide-line">
-            {lessons.map((l) => (
+            {pg.rows.map((l) => (
               <li key={l.id} className="flex flex-wrap items-center gap-3 px-5 py-4 sm:px-6">
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold text-navy">{l.topic}</span>
@@ -508,12 +414,13 @@ export function StudentProgress() {
                 </span>
                 <div className="flex w-full items-center gap-3 sm:w-56">
                   <Progress value={l.status === "completed" ? 100 : l.progress} tone={l.status === "completed" ? "green" : "blue"} className="flex-1" />
-                  <Badge tone={LESSON_STATUS[l.status][0]}>{LESSON_STATUS[l.status][1]}</Badge>
+                  <Badge tone={(LESSON_STATUS[l.status] || ["gray"])[0]}>{(LESSON_STATUS[l.status] || [null, l.status])[1]}</Badge>
                 </div>
               </li>
             ))}
           </ul>
         )}
+        {pg.show && <Pager {...pg.pager} />}
       </Card>
     </>
   );

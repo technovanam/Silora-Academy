@@ -22,6 +22,17 @@ export async function authenticate(req, res, next) {
       throw new HttpError(401, "Your session has ended. Please sign in again.", "session_expired");
     }
 
+    // Demo-class guest (temporary sign-in from a guest link): only their one class
+    if (decoded.guest) {
+      const { guestUser } = await import("./routes/demos.js");
+      const user = await guestUser(decoded);
+      const p = req.path;
+      if (p !== "/me" && !p.startsWith(`/meetings/${user.meetingId}/live`)) throw new HttpError(403, "Guests can only join their demo class", "guest_only");
+      req.user = user;
+      req.settings = await getSettings();
+      return next();
+    }
+
     const ref = db.collection(C.users).doc(decoded.uid);
     const snap = await ref.get();
     if (!snap.exists) throw new HttpError(403, "No portal account for this login", "no_account");

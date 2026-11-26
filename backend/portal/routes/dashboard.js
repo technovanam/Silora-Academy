@@ -4,8 +4,11 @@
 import { Router } from "express";
 import { db, C } from "../firebase.js";
 import { ah, listData, getMany, weekStartOf, nowIso, localDateOf } from "../util.js";
-import { hasPerm, usersByRole } from "../services/core.js";
+import { hasPerm, usersByRole, studentsOfTeacher, subjectTeachersOf, teacherIdsOf } from "../services/core.js";
 import { computeAlerts } from "../services/alerts.js";
+import { summarize, flattenForms, getRules, isFormDue } from "../services/attendance.js";
+import { pendingForms } from "./attendance.js";
+import { feeState, feeRestrictions, isLocked } from "../services/fees.js";
 
 const router = Router();
 const now = () => nowIso();
@@ -51,21 +54,28 @@ router.get(
     const u = req.user;
 
     if (u.role === "student") {
+      // Fees are per subject: only the subjects still waiting for proof are left out
+      const fee = await feeState(u.id);
+      const hide = fee.restricted ? await feeRestrictions() : null;
+      const keep = (on) => (list) => (on ? list.filter((x) => !isLocked(fee, x.subject)) : list);
       const [meetings, materials, opens, attendance, lessons] = await Promise.all([
-        db.collection(C.meetings).where("studentIds", "array-contains", u.id).get().then(listData),
-        db.collection(C.materials).where("studentIds", "array-contains", u.id).get().then(listData),
+        db.collection(C.meetings).where("studentIds", "array-contains", u.id).get().then(listData).then(keep(fee.restricted)),
+        db.collection(C.materials).where("studentIds", "array-contains", u.id).get().then(listData).then(keep(hide?.materials)),
         db.collection(C.materialOpens).where("studentId", "==", u.id).get().then(listData),
-        db.collection(C.attendance).doc(`${u.id}_${weekStartOf(new Date())}`).get(),
-        db.collection(C.lessons).where("studentId", "==", u.id).get().then(listData),
+        db.collection(C.classAttendance).where("studentIds", "array-contains", u.id).get().then(listData).then(keep(fee.restricted)),
+        db.collection(C.lessons).where("studentId", "==", u.id).get().then(listData).then(keep(hide?.progress)),
       ]);
       const upcoming = meetings.filter((m) => m.status === "scheduled" && m.endAt > now()).sort((a, b) => (a.startAt < b.startAt ? -1 : 1));
-      const names = await nameMap(upcoming.map((m) => m.teacherId).concat(u.teacherId));
+      const names = await nameMap(upcoming.map((m) => m.teacherId).concat(teacherIdsOf(u)));
       const live = materials.filter((m) => !m.deletedAt && m.status === "published");
       const openIds = new Set(opens.map((o) => o.materialId));
       const done = lessons.filter((l) => l.status === "completed").length;
       return res.json({
         role: "student",
-        teacherName: names[u.teacherId] || null,
+        feeRestricted: fee.restricted,
+        feeLockedSubjects: fee.subjects,
+        // One teacher per subject
+        teachers: subjectTeachersOf(u).filter((r) => r.teacherId).map((r) => ({ subject: r.subject, name: names[r.teacherId] || "" })),
         nextClass: upcoming[0] ? slimMeeting(upcoming[0], names, true) : null,
         upcoming: upcoming.slice(0, 5).map((m) => slimMeeting(m, names, true)),
         materials: {
@@ -76,20 +86,27 @@ router.get(
             .slice(0, 4)
             .map((m) => ({ id: m.id, title: m.title, subject: m.subject, kind: m.file?.kind, publishedAt: m.publishedAt, opened: openIds.has(m.id) })),
         },
-        attendance: { weekStart: weekStartOf(new Date()), submitted: attendance.exists },
+        attendance: summarize(flattenForms(attendance.filter((f) => f.status === "submitted"), { studentId: u.id })),
         progress: { total: lessons.length, completed: done, percent: lessons.length ? Math.round(lessons.reduce((a, l) => a + (l.status === "completed" ? 100 : l.progress || 0), 0) / lessons.length) : 0 },
         announcements: await unreadAnnouncements(u),
       });
     }
 
     if (u.role === "teacher") {
-      const [meetings, students, materials, opens, requests] = await Promise.all([
+      const [meetings, students, materials, opens, requests, forms, rules] = await Promise.all([
         db.collection(C.meetings).where("teacherId", "==", u.id).get().then(listData),
-        db.collection(C.users).where("teacherId", "==", u.id).get().then(listData),
+        studentsOfTeacher(u.id),
         db.collection(C.materials).where("teacherId", "==", u.id).get().then(listData),
         db.collection(C.materialOpens).where("teacherId", "==", u.id).get().then(listData),
         db.collection(C.scheduleRequests).where("teacherId", "==", u.id).get().then(listData),
+        db.collection(C.classAttendance).where("teacherId", "==", u.id).get().then(listData),
+        getRules(),
       ]);
+      const pays = listData(await db.collection(C.teacherPayments).where("teacherId", "==", u.id).get()).filter((p) => !p.removed).sort((a, b) => (b.sessionStartDate || "").localeCompare(a.sessionStartDate || ""));
+      const submittedIds = new Set(forms.filter((f) => f.status === "submitted").map((f) => f.meetingId));
+      const held = meetings.filter((m) => m.hadLiveClass && localDateOf(m.startAt) >= rules.formsFrom && !submittedIds.has(m.id));
+      const heldRooms = await getMany(db, C.liveRooms, held.map((m) => m.id));
+      const pendingAttendance = held.filter((m) => isFormDue(m, heldRooms[m.id])).length;
       const mine = students.filter((s) => s.role === "student" && !s.deletedAt && s.active);
       const upcoming = meetings.filter((m) => m.status === "scheduled" && m.endAt > now()).sort((a, b) => (a.startAt < b.startAt ? -1 : 1));
       const names = await nameMap(upcoming.slice(0, 10).flatMap((m) => m.studentIds || []));
@@ -107,7 +124,9 @@ router.get(
           scheduled: live.filter((m) => m.status === "scheduled").length,
           openRate: totalAssigned ? Math.round((opened / totalAssigned) * 100) : null,
           pendingRequests: requests.filter((r) => r.status === "pending").length,
+          pendingAttendance,
         },
+        latestPayment: pays[0] ? { sessionName: pays[0].sessionName, status: pays[0].status, held: pays[0].conductedClasses, scheduled: pays[0].scheduledClasses, amount: pays[0].amount ?? null, paidOn: pays[0].paidOn || null } : null,
         nextClass: upcoming[0] ? slimMeeting(upcoming[0], names) : null,
         upcoming: upcoming.slice(0, 6).map((m) => slimMeeting(m, names)),
         announcements: await unreadAnnouncements(u),
@@ -132,7 +151,8 @@ router.get(
     const names = await nameMap(upcoming.slice(0, 8).flatMap((m) => [m.teacherId, ...(m.studentIds || [])]));
     const today = localDateOf(new Date());
     const weekStart = weekStartOf(new Date());
-    const att = hasPerm(u, "attendance") ? listData(await db.collection(C.attendance).where("weekStart", "==", weekStart).get()) : null;
+    const att = hasPerm(u, "attendance") ? await pendingForms() : null;
+    const pendingLeave = hasPerm(u, "attendance") ? (await db.collection(C.leaveRequests).where("status", "==", "pending").count().get()).data().count : null;
     const alerts = await computeAlerts();
 
     // classes per day for the next 7 days (chart)
@@ -148,15 +168,18 @@ router.get(
         activeStudents: liveS.filter((s) => s.active).length,
         teachers: liveT.length,
         activeTeachers: liveT.filter((t) => t.active).length,
-        unassignedStudents: liveS.filter((s) => s.active && !s.teacherId).length,
+        unassignedStudents: liveS.filter((s) => s.active && (!teacherIdsOf(s).length || subjectTeachersOf(s).some((r) => !r.teacherId))).length,
         classesToday: upcoming.filter((m) => localDateOf(m.startAt) === today).length,
         upcomingClasses: upcoming.length,
         pendingRequests: requests.length,
         materials: materials.filter((m) => !m.deletedAt).length,
         loginsToday: loginsDay.filter((l) => l.success).length,
         failedLoginsToday: loginsDay.filter((l) => !l.success).length,
-        attendanceSubmitted: att ? att.length : null,
-        attendanceExpected: att ? liveS.filter((s) => s.active).length : null,
+        attendancePending: att ? att.pending.length : null,
+        attendanceOverdue: att ? att.pending.filter((f) => f.overdue).length : null,
+        pendingLeave,
+        teacherPaymentsDue: hasPerm(u, "teacherPayments") ? (await db.collection(C.teacherPayments).where("status", "==", "due").get()).docs.filter((d) => !d.data().removed).length : null,
+        feeProofsToVerify: hasPerm(u, "fees") ? (await db.collection(C.feePayments).where("verification", "==", "unverified").get()).docs.filter((d) => d.data().submission === "submitted" && !d.data().removed).length : null,
       },
       perDay,
       charts: await adminCharts({ u, meetings, liveS, liveT, materials, logins14 }),
@@ -203,7 +226,7 @@ async function adminCharts({ u, meetings, liveS, liveT, materials, logins14 }) {
           name: t.name,
           past: mine.filter((m) => m.startAt >= from && m.startAt < nowStr).length,
           upcoming: mine.filter((m) => m.startAt >= nowStr && m.startAt <= to).length,
-          students: liveS.filter((s) => s.active && s.teacherId === t.id).length,
+          students: liveS.filter((s) => s.active && teacherIdsOf(s).includes(t.id)).length,
         };
       })
       .sort((a, b) => b.past + b.upcoming - (a.past + a.upcoming));

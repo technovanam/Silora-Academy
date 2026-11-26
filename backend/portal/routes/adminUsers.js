@@ -2,11 +2,12 @@
 // ADMIN – STUDENTS, TEACHERS, ADMINS, CREDENTIALS, ASSIGNMENT, PERMISSIONS
 // ============================================================================
 import { Router } from "express";
+import { summarize, flattenForms } from "../services/attendance.js";
 import config from "../config.js";
 import { auth, db, C } from "../firebase.js";
 import { ah, fail, nowIso, isEmail, str, normName, normGrade, normPhone, tempPassword, listData, addDays, weekStartOf, shiftWeek, plural } from "../util.js";
 import { requirePerm, requireSuperAdmin } from "../middleware.js";
-import { adminView, audit, getUser, hasPerm, ADMIN_PERMISSIONS, usersByRole } from "../services/core.js";
+import { adminView, audit, getUser, hasPerm, ADMIN_PERMISSIONS, usersByRole, subjectTeachersOf, teacherIdsOf, assignmentFields, studentsOfTeacher, sameSubject, canonicalSubject } from "../services/core.js";
 import { notify } from "../services/notify.js";
 import { strongPassword } from "./auth.js";
 import { deleteConversationsOf } from "./messages.js";
@@ -26,7 +27,8 @@ function profileFields(body, role) {
   if (role === "student") {
     out.grade = normGrade(str(body.grade, 40));
     out.board = str(body.board, 60);
-    out.subjects = cleanList(body.subjects);
+    // The academy's own Student ID (e.g. SA260905) – typed by the admin
+    out.studentCode = str(body.studentCode, 30).toUpperCase().replace(/\s+/g, "");
   }
   if (role === "teacher") out.subjects = cleanList(body.subjects);
   return out;
@@ -40,6 +42,90 @@ function contactFields(body) {
     address: str(body.address, 300),
   };
 }
+
+// ---- Subjects & teachers of a student ----------------------------------------------
+// rows: [{ subject, teacherId }] – one teacher per subject (a subject may have none yet)
+function readRows(body) {
+  if (Array.isArray(body.subjectTeachers)) return body.subjectTeachers.slice(0, 20).map((r) => ({ subject: str(r?.subject, 60), teacherId: str(r?.teacherId, 60) || null }));
+  if ("subjects" in body || "teacherId" in body) {
+    // Older form: a subject list + one teacher for all of them
+    const t = str(body.teacherId, 60) || null;
+    const subs = cleanList(body.subjects);
+    return subs.length ? subs.map((subject) => ({ subject, teacherId: t })) : t ? [{ subject: "", teacherId: t }] : [];
+  }
+  return null;
+}
+// Teacher subjects: each from the academy's subject list. An archived subject
+// can only stay on someone who already had it – it can't be newly given.
+async function cleanTeacherSubjects(list, had = []) {
+  const out = [];
+  for (const x of list) {
+    const v = await canonicalSubject(x, { allowInactive: had.some((y) => sameSubject(y, x)) });
+    if (!out.some((y) => sameSubject(y, v))) out.push(v);
+  }
+  return out;
+}
+// A Student ID can only belong to one student
+async function checkStudentCode(code, selfId) {
+  if (!code) return;
+  const qs = await db.collection(C.users).where("studentCode", "==", code).get();
+  const other = qs.docs.find((d) => d.id !== selfId && !d.data().purged);
+  if (other) fail(409, `Student ID ${code} already belongs to ${other.data().name}`);
+}
+async function checkRows(rows, had = []) {
+  for (const r of rows) if (r.subject) r.subject = await canonicalSubject(r.subject, { allowInactive: had.some((y) => sameSubject(y.subject, r.subject)) });
+  const ids = [...new Set(rows.map((r) => r.teacherId).filter(Boolean))];
+  const teachers = {};
+  for (const id of ids) {
+    const t = await getUser(id);
+    if (!t || t.role !== "teacher" || t.deletedAt) fail(400, "Selected teacher not found");
+    teachers[id] = t;
+  }
+  // The teacher must teach that subject (teachers with no subject list are not checked)
+  for (const r of rows) {
+    const t = teachers[r.teacherId];
+    if (t && r.subject && (t.subjects || []).length && !t.subjects.some((x) => sameSubject(x, r.subject))) fail(400, `${t.name} doesn't teach ${r.subject} – add it to their subjects first`);
+  }
+  return teachers;
+}
+async function nameMap(ids) {
+  const out = {};
+  for (const id of [...new Set(ids.filter(Boolean))]) out[id] = (await getUser(id))?.name || "";
+  return out;
+}
+// Save the rows, then audit + tell each teacher/student what changed
+async function saveAssignments(req, student, rows, { isNew = false } = {}) {
+  const teachers = await checkRows(rows, isNew ? [] : subjectTeachersOf(student));
+  const fields = assignmentFields(rows);
+  await db.collection(C.users).doc(student.id).update({ ...fields, assignedAt: nowIso() });
+  const before = isNew ? [] : subjectTeachersOf(student);
+  const teacherOf = (list, subject) => list.find((r) => sameSubject(r.subject, subject))?.teacherId || null;
+  const changes = fields.subjectTeachers
+    .map((r) => ({ subject: r.subject, from: teacherOf(before, r.subject), to: r.teacherId, added: !before.some((x) => sameSubject(x.subject, r.subject)) }))
+    .concat(before.filter((r) => r.teacherId && !fields.subjectTeachers.some((x) => sameSubject(x.subject, r.subject))).map((r) => ({ subject: r.subject, from: r.teacherId, to: null })))
+    .filter((c) => c.from !== c.to || c.added);
+  if (!changes.length) return fields;
+  const names = await nameMap(changes.flatMap((c) => [c.from, c.to]));
+  await audit(req, "user.assign_teacher", {
+    targetType: "student",
+    targetId: student.id,
+    summary: `${student.name}: ` + changes.map((c) => `${c.subject || "all subjects"} – ${c.to ? names[c.to] || "teacher" : "no teacher"}`).join(", "),
+    meta: { changes },
+  });
+  const gained = {};
+  for (const c of changes) if (c.to) (gained[c.to] ||= []).push(c.subject);
+  for (const [tid, subs] of Object.entries(gained)) {
+    const what = subs.filter(Boolean).join(", ");
+    await notify([tid], { type: "account", title: "New student assigned", body: `${student.name} has been assigned to you${what ? ` for ${what}` : ""}.`, link: "/portal/teacher/students" });
+    await notify([student.id], { type: "account", title: "Your teacher", body: `${teachers[tid]?.name || "A new teacher"} is now your ${what ? `${what} ` : ""}teacher.`, link: "/portal/student" });
+  }
+  return fields;
+}
+const teacherLine = (u, names) =>
+  subjectTeachersOf(u)
+    .filter((r) => r.teacherId)
+    .map((r) => (r.subject ? `${r.subject} – ${names[r.teacherId] || "—"}` : names[r.teacherId] || "—"))
+    .join(" · ");
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const ROLE_LABEL = { student: "Student", teacher: "Teacher", admin: "Admin" };
@@ -99,11 +185,15 @@ router.get(
     const all = listData(await db.collection(C.users).get());
     const names = Object.fromEntries(all.map((u) => [u.id, u.name]));
     const counts = {};
-    all.forEach((u) => u.role === "student" && u.teacherId && !u.deletedAt && (counts[u.teacherId] = (counts[u.teacherId] || 0) + 1));
+    all.forEach((u) => u.role === "student" && !u.deletedAt && teacherIdsOf(u).forEach((t) => (counts[t] = (counts[t] || 0) + 1)));
     const q = str(req.query.q, 100).toLowerCase();
     const out = shaped
-      .map((u) => ({ ...u, teacherName: u.teacherId ? names[u.teacherId] || "—" : null, studentCount: u.role === "teacher" ? counts[u.id] || 0 : undefined }))
-      .filter((u) => !q || [u.name, u.grade, u.board, u.teacherName, u.contact?.email, u.contact?.phone].join(" ").toLowerCase().includes(q))
+      .map((u) => {
+        if (u.role !== "student") return { ...u, studentCount: u.role === "teacher" ? counts[u.id] || 0 : undefined };
+        const rows = subjectTeachersOf(u);
+        return { ...u, teacherName: teacherLine(u, names) || null, unassignedSubjects: rows.filter((r) => r.subject && !r.teacherId).map((r) => r.subject) };
+      })
+      .filter((u) => !q || [u.name, u.studentCode, u.grade, u.board, u.teacherName, u.contact?.email, u.contact?.phone].join(" ").toLowerCase().includes(q))
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     res.json({ users: out, canViewContacts: hasPerm(req.user, "contacts") });
   })
@@ -114,7 +204,7 @@ router.get(
   "/directory",
   ah(async (req, res) => {
     const [teachers, students] = await Promise.all([usersByRole("teacher"), usersByRole("student")]);
-    const slim = (u) => ({ id: u.id, name: u.name, role: u.role, active: u.active && !u.deletedAt, teacherId: u.teacherId || null, grade: u.grade, board: u.board, subjects: u.subjects || [] });
+    const slim = (u) => ({ id: u.id, name: u.name, studentCode: u.studentCode || "", role: u.role, active: u.active && !u.deletedAt, grade: u.grade, board: u.board, subjects: u.subjects || [], ...(u.role === "student" ? { subjectTeachers: subjectTeachersOf(u), teacherIds: teacherIdsOf(u) } : {}) });
     res.json({ teachers: teachers.filter((t) => !t.deletedAt).map(slim), students: students.filter((s) => !s.deletedAt).map(slim) });
   })
 );
@@ -129,17 +219,17 @@ router.get(
     const view = await adminView(u, req.user);
     const extra = {};
     if (u.role === "student") {
-      const t = u.teacherId ? await getUser(u.teacherId) : null;
-      extra.teacher = t ? { id: t.id, name: t.name } : null;
+      const names = await nameMap(teacherIdsOf(u));
+      extra.teachers = subjectTeachersOf(u).map((r) => ({ subject: r.subject, teacherId: r.teacherId, name: r.teacherId ? names[r.teacherId] || "" : null }));
       const meetings = listData(await db.collection(C.meetings).where("studentIds", "array-contains", u.id).get());
       extra.upcomingClasses = meetings.filter((m) => m.status === "scheduled" && m.startAt > nowIso()).length;
       extra.totalClasses = meetings.filter((m) => m.status !== "cancelled").length;
-      const att = listData(await db.collection(C.attendance).where("studentId", "==", u.id).get());
-      extra.attendanceSubmitted = att.length;
+      const forms = listData(await db.collection(C.classAttendance).where("studentIds", "array-contains", u.id).get()).filter((f) => f.status === "submitted");
+      extra.attendance = summarize(flattenForms(forms, { studentId: u.id }));
     }
     if (u.role === "teacher") {
-      const students = listData(await db.collection(C.users).where("teacherId", "==", u.id).get()).filter((s) => s.role === "student" && !s.deletedAt);
-      extra.students = students.map((s) => ({ id: s.id, name: s.name, grade: s.grade, board: s.board, active: s.active }));
+      const students = (await studentsOfTeacher(u.id)).filter((s) => !s.deletedAt);
+      extra.students = students.map((s) => ({ id: s.id, name: s.name, studentCode: s.studentCode || "", grade: s.grade, board: s.board, active: s.active, subjects: subjectTeachersOf(s).filter((r) => r.teacherId === u.id).map((r) => r.subject).filter(Boolean) }));
     }
     const logins = listData(await db.collection(C.loginEvents).where("uid", "==", u.id).get())
       .sort((a, b) => (a.at < b.at ? 1 : -1))
@@ -165,14 +255,10 @@ router.post(
     if (generated) password = tempPassword();
     else if (!strongPassword(password)) fail(400, "Password must be at least 8 characters with a letter and a number");
 
-    let teacherId = null;
-    if (role === "student") {
-      teacherId = str(req.body.teacherId, 60) || null;
-      if (teacherId) {
-        const t = await getUser(teacherId);
-        if (!t || t.role !== "teacher" || t.deletedAt) fail(400, "Selected teacher not found");
-      }
-    }
+    const rows = role === "student" ? readRows(req.body) || [] : null;
+    if (rows) await checkRows(rows);
+    if (role === "student") await checkStudentCode(profile.studentCode);
+    if (role === "teacher") profile.subjects = await cleanTeacherSubjects(profile.subjects);
 
     let authUser;
     try {
@@ -185,7 +271,7 @@ router.post(
     const doc = {
       role,
       ...profile,
-      teacherId: role === "student" ? teacherId : undefined,
+      ...(role === "student" ? assignmentFields(rows) : {}),
       active: true,
       createdAt: at,
       createdBy: req.user.id,
@@ -202,7 +288,7 @@ router.post(
     await db.collection(C.contacts).doc(authUser.uid).set({ ...contact, updatedAt: at });
 
     await audit(req, "user.create", { targetType: role, targetId: authUser.uid, summary: `Created ${role} account for ${profile.name}` });
-    if (teacherId) await audit(req, "user.assign_teacher", { targetType: "student", targetId: authUser.uid, summary: `Assigned ${profile.name} to a teacher`, meta: { teacherId } });
+    if (rows?.some((r) => r.teacherId)) await saveAssignments(req, { id: authUser.uid, name: profile.name }, rows, { isNew: true });
 
     // Email the login details unless the admin explicitly opted out
     const email = req.body.sendCredentials === false ? { status: "off" } : await sendCredentials(doc, contact.email, password);
@@ -221,7 +307,15 @@ router.patch(
     if (u.role === "admin" && !req.user.superAdmin) fail(403, "Only a super admin can edit admin accounts");
     const profile = profileFields({ ...u, ...req.body }, u.role);
     if (!profile.name) fail(400, "Name is required");
+    if (u.role === "student") await checkStudentCode(profile.studentCode, u.id);
+    if (u.role === "teacher" && "subjects" in req.body) profile.subjects = await cleanTeacherSubjects(profile.subjects, u.subjects || []);
     await db.collection(C.users).doc(u.id).update({ ...profile, updatedAt: nowIso() });
+    if (u.role === "student" && Array.isArray(req.body.subjectTeachers)) await saveAssignments(req, { ...u, name: profile.name }, readRows(req.body));
+    else if (u.role === "student" && "subjects" in req.body) {
+      // Subject list edited without teachers: keep each subject's current teacher
+      const cur = subjectTeachersOf(u);
+      await saveAssignments(req, { ...u, name: profile.name }, cleanList(req.body.subjects).map((subject) => ({ subject, teacherId: cur.find((r) => sameSubject(r.subject, subject))?.teacherId || null })));
+    }
 
     // Contact details can only be changed by admins who may see them
     if (hasPerm(req.user, "contacts") && ["email", "phone", "parentName", "parentPhone", "address"].some((k) => k in req.body)) {
@@ -306,24 +400,16 @@ router.post(
   ah(async (req, res) => {
     const s = await getUser(req.params.id);
     if (!s || s.role !== "student") fail(404, "Student not found");
-    const teacherId = str(req.body.teacherId, 60) || null;
-    let t = null;
-    if (teacherId) {
-      t = await getUser(teacherId);
-      if (!t || t.role !== "teacher" || t.deletedAt) fail(400, "Teacher not found");
+    let rows;
+    if (Array.isArray(req.body.subjectTeachers)) rows = readRows(req.body);
+    else {
+      // { teacherId } alone: that teacher for all of the student's subjects
+      const t = str(req.body.teacherId, 60) || null;
+      const cur = subjectTeachersOf(s);
+      rows = cur.length ? cur.map((r) => ({ subject: r.subject, teacherId: t })) : t ? [{ subject: "", teacherId: t }] : [];
     }
-    await db.collection(C.users).doc(s.id).update({ teacherId, assignedAt: nowIso() });
-    await audit(req, "user.assign_teacher", {
-      targetType: "student",
-      targetId: s.id,
-      summary: t ? `Assigned ${s.name} to ${t.name}` : `Removed teacher from ${s.name}`,
-      meta: { from: s.teacherId || null, to: teacherId },
-    });
-    if (t) {
-      await notify([t.id], { type: "account", title: "New student assigned", body: `${s.name} has been assigned to you.`, link: "/portal/teacher/students" });
-      await notify([s.id], { type: "account", title: "Your teacher", body: `${t.name} is now your teacher.`, link: "/portal/student" });
-    }
-    res.json({ ok: true });
+    const fields = await saveAssignments(req, s, rows);
+    res.json({ ok: true, subjectTeachers: fields.subjectTeachers });
   })
 );
 
@@ -424,15 +510,15 @@ router.get(
         name: t.name,
         active: t.active,
         subjects: t.subjects || [],
-        students: students.filter((s) => s.teacherId === t.id).length,
-        activeStudents: students.filter((s) => s.teacherId === t.id && s.active).length,
+        students: students.filter((s) => teacherIdsOf(s).includes(t.id)).length,
+        activeStudents: students.filter((s) => teacherIdsOf(s).includes(t.id) && s.active).length,
         classesThisWeek: thisWeek.length,
         hoursThisWeek: Math.round((thisWeek.reduce((a, m) => a + (m.durationMin || 60), 0) / 60) * 10) / 10,
         upcoming30Days: upcoming.length,
         groupClasses: upcoming.filter((m) => (m.studentIds || []).length > 1).length,
       };
     });
-    res.json({ teachers: rows.sort((a, b) => b.students - a.students), unassigned: students.filter((s) => !s.teacherId).map((s) => ({ id: s.id, name: s.name })) });
+    res.json({ teachers: rows.sort((a, b) => b.students - a.students), unassigned: students.filter((s) => !teacherIdsOf(s).length || subjectTeachersOf(s).some((r) => !r.teacherId)).map((s) => ({ id: s.id, name: s.name, subjects: subjectTeachersOf(s).filter((r) => !r.teacherId).map((r) => r.subject) })) });
   })
 );
 

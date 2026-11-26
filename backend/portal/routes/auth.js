@@ -8,7 +8,7 @@ import config from "../config.js";
 import { auth, db, C, FieldValue } from "../firebase.js";
 import { ah, fail, nowIso, addMinutes, isEmail, str, clientIp, listData } from "../util.js";
 import { authenticate } from "../middleware.js";
-import { getSettings, getUser, publicProfile, logActivity } from "../services/core.js";
+import { getSettings, getUser, publicProfile, logActivity, teacherIdsOf, subjectsTaughtBy } from "../services/core.js";
 import { mailConfigured, trySendMail } from "../../mailer.js";
 
 export const publicRouter = Router();
@@ -170,11 +170,17 @@ meRouter.get(
   "/me",
   ah(async (req, res) => {
     const u = req.user;
+    if (u.role === "guest") {
+      return res.json({ user: { id: u.id, name: u.name, role: "guest", guest: true, meetingId: u.meetingId }, teachers: [], settings: { sessionTimeoutMin: 24 * 60, classReminderMinutes: req.settings.classReminderMinutes, timezone: config.timezone, pushAvailable: false } });
+    }
     const contactSnap = await db.collection(C.contacts).doc(u.id).get();
-    let teacher = null;
-    if (u.role === "student" && u.teacherId) {
-      const t = await getUser(u.teacherId);
-      if (t) teacher = { id: t.id, name: t.name, subjects: t.subjects || [] }; // never contact details
+    // A student's teachers, one per subject (never contact details)
+    const teachers = [];
+    if (u.role === "student") {
+      for (const id of teacherIdsOf(u)) {
+        const t = await getUser(id);
+        if (t && !t.deletedAt) teachers.push({ id: t.id, name: t.name, subjects: subjectsTaughtBy(u, id).filter(Boolean) });
+      }
     }
     res.json({
       user: {
@@ -186,7 +192,7 @@ meRouter.get(
         mustChangePassword: !!u.mustChangePassword,
         contact: contactSnap.exists ? contactSnap.data() : {}, // own details only
       },
-      teacher,
+      teachers,
       settings: {
         sessionTimeoutMin: req.settings.sessionTimeoutMin,
         classReminderMinutes: req.settings.classReminderMinutes,

@@ -21,7 +21,7 @@ function ReportsTab() {
   const [days, setDays] = useState(30);
   const needsDays = id === "notifications";
   const report = useAsync(() => api.get(`/admin/reports/${id}`, needsDays ? { days } : undefined), [id, days]);
-  const blocked = (rid) => (rid === "attendance" && !can(user, "attendance")) || (rid === "notifications" && !can(user, "notifications"));
+  const blocked = (rid) => (["attendance", "attendanceLegacy"].includes(rid) && !can(user, "attendance")) || (rid === "notifications" && !can(user, "notifications"));
   const exportCsv = () => api.download(`/admin/reports/${id}`, { format: "csv", ...(needsDays ? { days } : {}) }).catch(ui.error);
   return (
     <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
@@ -225,7 +225,7 @@ export function AdminSettings() {
               <Input min={1} max={60} {...num("unopenedMaterialDays")} />
             </Field>
             <div className="sm:col-span-2">
-              <Toggle label="Weekly attendance reminders" description="Saturday 10 AM and Sunday 6 PM to students who haven't submitted" checked={s.attendanceReminder?.enabled} onChange={(v) => setS({ ...s, attendanceReminder: { enabled: v } })} />
+              <Toggle label="Attendance form reminders" description="Remind teachers who haven't submitted a class's attendance form (time set in Attendance → Rules)" checked={s.attendanceReminder?.enabled} onChange={(v) => setS({ ...s, attendanceReminder: { enabled: v } })} />
             </div>
           </div>
         </Card>

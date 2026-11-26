@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell, BookOpen, CalendarDays, CalendarClock, CalendarRange, ChartColumn, ClipboardCheck, Database, FolderOpen, GraduationCap, LayoutDashboard,
-  KeyRound, LogOut, MessagesSquare, ChevronRight, ChevronDown, PanelLeftClose, PanelLeftOpen, Megaphone, Menu, Settings, Video, ShieldCheck, Siren, TrendingUp, User, Users, X, BellRing, CheckCheck, ExternalLink,
+  KeyRound, Lock, LogOut, MessagesSquare, Presentation, Receipt, Wallet, ChevronRight, ChevronDown, PanelLeftClose, PanelLeftOpen, Megaphone, Menu, Settings, Video, ShieldCheck, Siren, TrendingUp, User, Users, X, BellRing, CheckCheck, ExternalLink,
 } from "lucide-react";
 import { SITE } from "../data/site";
 import { useAuth, can } from "./lib/auth.jsx";
@@ -11,6 +11,7 @@ import { api } from "./lib/api.js";
 import { enablePush, pushConfigured, resumePush } from "./lib/firebase.js";
 import { fromNow, roleLabel } from "./lib/format.js";
 import { Avatar, Empty, cx, Menu as DropMenu, useUi } from "./ui/index.jsx";
+import { FeeReminder, isLockedPath, useFeeStatus } from "./pages/FeePages.jsx";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 
@@ -64,8 +65,9 @@ export function navFor(user) {
       { to: "/portal/student/timetable", label: "Timetable", icon: CalendarRange },
       { to: "/portal/student/materials", label: "Materials", icon: FolderOpen },
       { to: "/portal/student/recordings", label: "Recordings", icon: Video },
-      { to: "/portal/student/attendance", label: "Weekly attendance", icon: ClipboardCheck },
+      { to: "/portal/student/attendance", label: "Attendance", icon: ClipboardCheck },
       { to: "/portal/student/progress", label: "Progress", icon: TrendingUp },
+      { to: "/portal/student/fees", label: "Session fees", icon: Receipt },
       { to: "/portal/messages", label: "Messages", icon: MessagesSquare, badge: "messages" },
       { to: "/portal/announcements", label: "Announcements", icon: Megaphone },
     ];
@@ -74,9 +76,13 @@ export function navFor(user) {
       { to: "/portal/teacher", label: "Dashboard", icon: LayoutDashboard, end: true },
       { to: "/portal/teacher/calendar", label: "Calendar & classes", icon: CalendarDays },
       { to: "/portal/teacher/timetable", label: "Timetable", icon: CalendarRange },
+      { to: "/portal/teacher/attendance", label: "Attendance", icon: ClipboardCheck },
+      { to: "/portal/teacher/sessions", label: "Sessions", icon: CalendarRange },
       { to: "/portal/teacher/students", label: "My students", icon: GraduationCap },
       { to: "/portal/teacher/materials", label: "Materials", icon: FolderOpen },
       { to: "/portal/teacher/requests", label: "Schedule requests", icon: CalendarClock },
+      { to: "/portal/teacher/demos", label: "Demo classes", icon: Presentation },
+      { to: "/portal/teacher/payments", label: "My payments", icon: Wallet },
       { to: "/portal/messages", label: "Messages", icon: MessagesSquare, badge: "messages" },
       { to: "/portal/announcements", label: "Announcements", icon: Megaphone },
     ];
@@ -87,6 +93,11 @@ export function navFor(user) {
     { to: "/portal/admin/teachers", label: "Teachers", icon: Users, perm: "users" },
     { to: "/portal/admin/admins", label: "Admins & access", icon: ShieldCheck, superOnly: true },
     { section: "Teaching" },
+    { to: "/portal/admin/subjects", label: "Subjects", icon: BookOpen, perm: ["settings", "users", "sessions"] },
+    { to: "/portal/admin/sessions", label: "Sessions", icon: CalendarRange, perm: "sessions" },
+    { to: "/portal/admin/fees", label: "Session fees", icon: Receipt, perm: "fees" },
+    { to: "/portal/admin/demos", label: "Demo requests", icon: Presentation, perm: "demos" },
+    { to: "/portal/admin/teacher-payments", label: "Teacher payments", icon: Wallet, perm: "teacherPayments" },
     { to: "/portal/admin/classes", label: "Classes", icon: CalendarDays, perm: "classes" },
     { to: "/portal/admin/timetable", label: "Timetable", icon: CalendarRange, perm: "classes" },
     { to: "/portal/admin/requests", label: "Schedule requests", icon: CalendarClock, perm: "classes" },
@@ -94,7 +105,7 @@ export function navFor(user) {
     { to: "/portal/admin/attendance", label: "Attendance", icon: ClipboardCheck, perm: "attendance" },
     { to: "/portal/admin/recordings", label: "Recordings", icon: Video, perm: "recordings" },
     { section: "Communication" },
-    { to: "/portal/admin/messages", label: "Messages", icon: MessagesSquare, perm: "messages", badge: "messages" },
+    { to: "/portal/admin/messages", label: "Messages", icon: MessagesSquare, perm: ["messages", "groups"], badge: "messages" },
     { to: "/portal/admin/announcements", label: "Announcements", icon: Megaphone, perm: "announcements" },
     { to: "/portal/admin/notifications", label: "Notification log", icon: BellRing, perm: "notifications" },
     { section: "Monitoring" },
@@ -149,6 +160,7 @@ function NavItem({ item, collapsed, onNavigate, count = 0 }) {
         <>
           <item.icon className={cx("h-[18px] w-[18px] shrink-0", isActive ? "text-brand" : "text-slate-400 group-hover:text-slate-600")} strokeWidth={isActive ? 2.2 : 1.9} />
           {!collapsed && <span className="truncate">{item.label}</span>}
+          {item.locked && !collapsed && <Lock className={cx("ml-auto h-3.5 w-3.5 shrink-0", isActive ? "text-white/70" : "text-amber-500")} aria-label="Locked until payment details are submitted" />}
           {count > 0 && (
             <span className={cx("flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white", collapsed ? "absolute right-1 top-0.5 ring-2 ring-white" : "ml-auto")}>{count > 99 ? "99+" : count}</span>
           )}
@@ -158,8 +170,9 @@ function NavItem({ item, collapsed, onNavigate, count = 0 }) {
   );
 }
 
-function Sidebar({ user, onNavigate, collapsed = false, onToggle, onLogout }) {
-  const items = navFor(user);
+function Sidebar({ user, onNavigate, collapsed = false, onToggle, onLogout, fee }) {
+  // While session fee proof is missing, academic pages show a lock
+  const items = navFor(user).map((i) => (i.to && isLockedPath(i.to, fee) ? { ...i, locked: true } : i));
   const unreadMessages = useUnreadMessages(user);
   return (
     <div className="flex h-full flex-col">
@@ -402,6 +415,7 @@ export default function PortalLayout() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const fee = useFeeStatus(user);
   useEffect(() => setDrawer(false), [pathname]);
   useSmoothScroll(pathname);
   useEffect(() => {
@@ -433,7 +447,7 @@ export default function PortalLayout() {
     <div className="min-h-svh bg-[#f7f8fa]">
       {/* Desktop sidebar */}
       <aside className={cx("fixed inset-y-0 left-0 z-40 hidden border-r border-slate-200/80 bg-white transition-[width] duration-200 lg:block", sideW)}>
-        <Sidebar user={user} collapsed={collapsed} onToggle={toggleCollapsed} onLogout={logout} />
+        <Sidebar user={user} collapsed={collapsed} onToggle={toggleCollapsed} onLogout={logout} fee={fee} />
       </aside>
 
       {/* Mobile drawer */}
@@ -444,7 +458,7 @@ export default function PortalLayout() {
             <button onClick={() => setDrawer(false)} className="absolute right-3 top-4 z-10 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-navy" aria-label="Close menu">
               <X className="h-5 w-5" />
             </button>
-            <Sidebar user={user} onNavigate={() => setDrawer(false)} onLogout={logout} />
+            <Sidebar user={user} onNavigate={() => setDrawer(false)} onLogout={logout} fee={fee} />
           </aside>
         </div>
       )}
@@ -493,6 +507,7 @@ export default function PortalLayout() {
             </div>
           )}
           <PushPrompt user={user} />
+          <FeeReminder fee={fee} onLogout={logout} />
           <PageBoundary path={pathname}>
             <Outlet />
           </PageBoundary>

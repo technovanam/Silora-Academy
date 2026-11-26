@@ -5,6 +5,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, Repeat, Users, Video } from "lucide-react";
 import { api } from "../lib/api.js";
+import { canTeach } from "../lib/assign.js";
+import { SubjectSelect } from "../lib/subjects.jsx";
 import { fmtDay, fmtTime, fromLocalInput, toLocalInput, plural } from "../lib/format.js";
 import { Badge, Button, Dialog, Field, Input, Notice, Select, Textarea, cx, useUi } from "../ui/index.jsx";
 
@@ -271,12 +273,15 @@ export function ClassFormDialog({ open, onClose, onSaved, mode, students = [], t
     );
   }, [open, meeting]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pool = useMemo(() => students.filter((s) => s.active !== false && (mode === "teacher" || s.teacherId === f.teacherId)), [students, f.teacherId, mode]);
+  // Students this teacher teaches – and, once a subject is typed, not those who take it with someone else
+  const pool = useMemo(() => students.filter((s) => s.active !== false && (mode === "teacher" || canTeach(s, f.teacherId, f.subject))), [students, f.teacherId, f.subject, mode]);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v?.target ? v.target.value : v }));
+  const teacherSubjects = teachers.find((t) => t.id === f.teacherId)?.subjects || [];
 
   const save = async (e) => {
     e.preventDefault();
     setError(null);
+    if (!f.subject) return setError("Choose the subject");
     if (!f.studentIds?.length) return setError("Choose at least one student");
     setBusy(true);
     try {
@@ -323,8 +328,8 @@ export function ClassFormDialog({ open, onClose, onSaved, mode, students = [], t
         <Field label="Class title" required className="sm:col-span-2">
           <Input value={f.title || ""} onChange={set("title")} placeholder="e.g. Algebra – quadratic equations" required maxLength={120} />
         </Field>
-        <Field label="Subject">
-          <Input value={f.subject || ""} onChange={set("subject")} placeholder="e.g. Mathematics" maxLength={80} />
+        <Field label="Subject" required hint="The class counts towards each student's session for this subject">
+          <SubjectSelect value={f.subject} onChange={(v) => setF((p) => ({ ...p, subject: v, studentIds: (p.studentIds || []).filter((id) => mode === "teacher" || canTeach(students.find((x) => x.id === id), p.teacherId, v)) }))} only={mode === "admin" && teacherSubjects.length ? teacherSubjects : undefined} />
         </Field>
         {mode === "admin" ? (
           <Field label="Teacher" required>

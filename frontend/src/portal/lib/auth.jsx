@@ -28,24 +28,24 @@ const writeLast = (t) => {
 };
 
 export function AuthProvider({ children }) {
-  const [state, setState] = useState({ loading: true, user: null, teacher: null, settings: null });
+  const [state, setState] = useState({ loading: true, user: null, teachers: [], settings: null });
   const [endedReason, setEndedReason] = useState(null);
   const lastWrite = useRef(0);
 
   const loadMe = useCallback(async () => {
     const me = await api.get("/me");
-    setState({ loading: false, user: me.user, teacher: me.teacher, settings: me.settings });
+    setState({ loading: false, user: me.user, teachers: me.teachers || [], settings: me.settings });
     return me;
   }, []);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (fbUser) => {
-      if (!fbUser) return setState({ loading: false, user: null, teacher: null, settings: null });
+      if (!fbUser) return setState({ loading: false, user: null, teachers: [], settings: null });
       try {
         await loadMe();
       } catch {
         await signOut(auth).catch(() => {});
-        setState({ loading: false, user: null, teacher: null, settings: null });
+        setState({ loading: false, user: null, teachers: [], settings: null });
       }
     });
   }, [loadMe]);
@@ -69,7 +69,7 @@ export function AuthProvider({ children }) {
     if (auth.currentUser && !reason) await api.post("/auth/logout").catch(() => {});
     await signOut(auth).catch(() => {});
     setEndedReason(reason || null);
-    setState({ loading: false, user: null, teacher: null, settings: null });
+    setState({ loading: false, user: null, teachers: [], settings: null });
   }, []);
 
   // Server says the session is over (timeout, deactivated…)
@@ -104,8 +104,18 @@ export function AuthProvider({ children }) {
     };
   }, [state.user, timeoutMin, logout]);
 
-  const value = { ...state, login, logout, reload: loadMe, endedReason, clearEnded: () => setEndedReason(null) };
+  // Demo-class guest link: a temporary sign-in that only opens one class
+  const guestLogin = useCallback(
+    async (customToken) => {
+      await signInWithCustomToken(auth, customToken);
+      return loadMe();
+    },
+    [loadMe]
+  );
+
+  const value = { ...state, login, logout, guestLogin, reload: loadMe, endedReason, clearEnded: () => setEndedReason(null) };
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
-export const can = (user, perm) => user?.role === "admin" && (user.superAdmin || user.permissions === "all" || !!user.permissions?.[perm]);
+// perm may be a list: any one of them is enough
+export const can = (user, perm) => (Array.isArray(perm) ? perm.some((p) => can(user, p)) : user?.role === "admin" && (user.superAdmin || user.permissions === "all" || !!user.permissions?.[perm]));

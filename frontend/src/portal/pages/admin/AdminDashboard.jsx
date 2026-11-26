@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, BellRing, CalendarClock, CalendarDays, CalendarPlus, ClipboardCheck, FileX, GraduationCap, Siren, UserPlus, UserX, Users } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useAuth, can } from "../../lib/auth.jsx";
-import { fmtWeek, plural } from "../../lib/format.js";
+import { plural } from "../../lib/format.js";
 import { Badge, Button, Card, CardTitle, Empty, ErrorBox, Loading, PageHeader, StatCard, cx, useAsync } from "../../ui/index.jsx";
 import { BarList, ColumnChart, Legend, LineChart, Meter, SERIES } from "../../components/charts.jsx";
 import { ClassRow, JoinButton } from "../../components/classes.jsx";
@@ -80,13 +80,13 @@ export function AdminDashboard() {
 
       {/* KPI tiles */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={GraduationCap} label="Active students" value={s.activeStudents} hint={`${s.students} total${s.unassignedStudents ? ` · ${s.unassignedStudents} unassigned` : ""}`} onClick={canUsers ? () => navigate("/portal/admin/students") : undefined} />
+        <StatCard icon={GraduationCap} label="Active students" value={s.activeStudents} hint={`${s.students} total${s.unassignedStudents ? ` · ${s.unassignedStudents} need a teacher` : ""}`} onClick={canUsers ? () => navigate("/portal/admin/students") : undefined} />
         <StatCard icon={Users} label="Active teachers" value={s.activeTeachers} hint={`${s.teachers} total`} tone="blue" onClick={canUsers ? () => navigate("/portal/admin/teachers") : undefined} />
         <StatCard icon={CalendarDays} label="Classes today" value={s.classesToday} hint={`${s.upcomingClasses} upcoming in total`} tone="green" onClick={canClasses ? () => navigate("/portal/admin/classes") : undefined} />
         <StatCard icon={CalendarClock} label="Pending requests" value={s.pendingRequests} hint="Reschedule / cancel" tone={s.pendingRequests ? "red" : "violet"} onClick={canClasses ? () => navigate("/portal/admin/requests") : undefined} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Classes per week */}
         {ch.weekly && (
           <Card className="xl:col-span-2">
@@ -108,7 +108,35 @@ export function AdminDashboard() {
           <h2 className="text-[15px] font-semibold text-navy">Engagement</h2>
           <p className="mb-5 text-[13px] text-slate-500">This week</p>
           <div className="space-y-6">
-            {s.attendanceExpected !== null && <Meter label="Attendance forms submitted" value={s.attendanceSubmitted} total={s.attendanceExpected} hint={fmtWeek(weekStart())} color={SERIES.aqua} />}
+            {s.attendancePending !== null && (
+              <Link to="/portal/admin/attendance?tab=pending" className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 p-3 transition hover:border-slate-200">
+                <div>
+                  <p className="text-[13px] font-medium text-slate-500">Attendance forms waiting</p>
+                  <p className={cx("mt-1 text-2xl font-bold tracking-tight", s.attendanceOverdue ? "text-rose-600" : "text-navy")}>{s.attendancePending}</p>
+                  {s.attendanceOverdue > 0 && <p className="text-xs text-rose-600">{s.attendanceOverdue} overdue</p>}
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-slate-500">Leave requests</p>
+                  <p className={cx("mt-1 text-2xl font-bold tracking-tight", s.pendingLeave ? "text-amber-600" : "text-navy")}>{s.pendingLeave}</p>
+                </div>
+              </Link>
+            )}
+            {(s.teacherPaymentsDue !== null || s.feeProofsToVerify !== null) && (
+              <div className="grid grid-cols-2 gap-3">
+                {s.feeProofsToVerify !== null && (
+                  <Link to="/portal/admin/fees" className="rounded-xl border border-slate-100 p-3 transition hover:border-slate-200">
+                    <p className="text-[13px] font-medium text-slate-500">Fee proofs to verify</p>
+                    <p className={cx("mt-1 text-2xl font-bold tracking-tight", s.feeProofsToVerify ? "text-sky-600" : "text-navy")}>{s.feeProofsToVerify}</p>
+                  </Link>
+                )}
+                {s.teacherPaymentsDue !== null && (
+                  <Link to="/portal/admin/teacher-payments" className="rounded-xl border border-slate-100 p-3 transition hover:border-slate-200">
+                    <p className="text-[13px] font-medium text-slate-500">Teacher payments due</p>
+                    <p className={cx("mt-1 text-2xl font-bold tracking-tight", s.teacherPaymentsDue ? "text-amber-600" : "text-navy")}>{s.teacherPaymentsDue}</p>
+                  </Link>
+                )}
+              </div>
+            )}
             <Meter label="Materials opened by students" value={ch.materials?.opened || 0} total={ch.materials?.assigned || 0} hint={`${plural(s.materials, "material")} in the library`} />
             <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
               <div>
@@ -125,7 +153,7 @@ export function AdminDashboard() {
             </div>
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
-            {s.attendanceExpected !== null && (
+            {s.attendancePending !== null && (
               <Link to="/portal/admin/attendance">
                 <Button variant="outline" size="sm">Attendance</Button>
               </Link>
@@ -223,12 +251,6 @@ const greeting = () => {
 };
 const localIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-
-function weekStart() {
-  const d = new Date();
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return localIso(d);
-}
 
 export function AdminAlerts() {
   const { data, loading, error, reload } = useAsync(() => api.get("/admin/alerts"), []);

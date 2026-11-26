@@ -6,14 +6,14 @@ import { Router } from "express";
 import { db, C } from "../firebase.js";
 import { ah, fail, nowIso, str, listData, getMany } from "../util.js";
 import { requireRole } from "../middleware.js";
-import { hasPerm, getUser, logActivity } from "../services/core.js";
+import { hasPerm, getUser, logActivity, teacherIdsOf, studentsOfTeacher, subjectsTaughtBy, canonicalSubject, sameSubject } from "../services/core.js";
 
 const router = Router();
 const STATUSES = ["planned", "in_progress", "completed"];
 
 async function ownStudent(teacher, studentId) {
   const s = await getUser(studentId);
-  if (!s || s.role !== "student" || s.deletedAt || s.teacherId !== teacher.id) fail(404, "Student not found");
+  if (!s || s.role !== "student" || s.deletedAt || !teacherIdsOf(s).includes(teacher.id)) fail(404, "Student not found");
   return s;
 }
 
@@ -85,7 +85,7 @@ router.post(
     const doc = {
       studentId: s.id,
       teacherId: req.user.id,
-      subject: str(req.body.subject, 80),
+      subject: await canonicalSubject(req.body.subject, { required: false }),
       topic,
       status,
       progress: status === "completed" ? 100 : Math.max(0, Math.min(100, Math.round(Number(req.body.progress || 0)))),
@@ -108,7 +108,7 @@ router.patch(
     if (!snap.exists || snap.data().teacherId !== req.user.id) fail(404, "Lesson not found");
     const update = { updatedAt: nowIso() };
     if ("topic" in req.body) update.topic = str(req.body.topic, 200) || snap.data().topic;
-    if ("subject" in req.body) update.subject = str(req.body.subject, 80);
+    if ("subject" in req.body) update.subject = await canonicalSubject(req.body.subject, { required: false, allowInactive: sameSubject(req.body.subject, snap.data().subject) });
     if ("comment" in req.body) update.comment = str(req.body.comment, 1000);
     if ("date" in req.body) update.date = str(req.body.date, 10) || null;
     if (STATUSES.includes(req.body.status)) update.status = req.body.status;
@@ -188,8 +188,7 @@ router.get(
   "/my-students",
   requireRole("teacher"),
   ah(async (req, res) => {
-    const qs = await db.collection(C.users).where("teacherId", "==", req.user.id).get();
-    const students = listData(qs).filter((s) => s.role === "student" && !s.deletedAt && !s.purged);
+    const students = (await studentsOfTeacher(req.user.id)).filter((s) => !s.deletedAt);
     const [lessons, opens, materials] = await Promise.all([
       db.collection(C.lessons).where("teacherId", "==", req.user.id).get(),
       db.collection(C.materialOpens).where("teacherId", "==", req.user.id).get(),
@@ -206,9 +205,10 @@ router.get(
           return {
             id: s.id,
             name: s.name,
+            studentCode: s.studentCode || "",
             grade: s.grade || "",
             board: s.board || "",
-            subjects: s.subjects || [],
+            subjects: subjectsTaughtBy(s, req.user.id).filter(Boolean), // only this teacher's subjects
             active: s.active,
             lastActiveAt: s.lastLoginAt || null,
             progress: sum.overall,

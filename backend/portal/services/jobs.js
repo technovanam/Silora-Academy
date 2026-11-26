@@ -6,7 +6,7 @@
 //                    live classes left open long after their end time
 //  • daily 02:00   – backup + data-retention clean-up
 //  • daily 09:00   – inactivity alert summary to admins
-//  • Sat 10:00 / Sun 18:00 – weekly attendance reminders to students
+//  • hourly        – remind teachers of attendance forms not submitted in time
 // ============================================================================
 import cron from "node-cron";
 import config from "../config.js";
@@ -20,6 +20,8 @@ import { publishMaterial } from "../routes/materials.js";
 import { deliverAnnouncement } from "../routes/notifications.js";
 import { cleanupMessageFiles } from "../routes/messages.js";
 import { closeForgottenRooms } from "../routes/live.js";
+import { pendingForms } from "../routes/attendance.js";
+import { recomputeAll as recomputeTeacherPayments } from "./teacherPayments.js";
 import { cleanupRecordings, finishAbandonedRecordings } from "../routes/recordings.js";
 import { purgeUser } from "../routes/adminUsers.js";
 
@@ -118,15 +120,21 @@ export async function sendInactivityAlerts() {
   return alerts.length;
 }
 
+// Teachers: attendance forms still not submitted N hours after the class (once per class)
 export async function sendAttendanceReminders() {
   const settings = await getSettings();
-  if (!settings.attendanceReminder?.enabled) return 0;
-  const weekStart = weekStartOf(new Date());
-  const [students, qs] = await Promise.all([usersByRole("student", { activeOnly: true }), db.collection(C.attendance).where("weekStart", "==", weekStart).get()]);
-  const done = new Set(qs.docs.map((d) => d.data().studentId));
-  const ids = students.filter((s) => !s.deletedAt && !done.has(s.id)).map((s) => s.id);
-  await notify(ids, { type: "attendance_reminder", title: "Weekly attendance form", body: "Please fill in this week's attendance form – it only takes a minute.", link: "/portal/student/attendance" });
-  return ids.length;
+  if (settings.attendanceReminder?.enabled === false) return 0;
+  const { pending } = await pendingForms();
+  let n = 0;
+  for (const f of pending.filter((p) => p.overdue)) {
+    const ref = db.collection(C.meetings).doc(f.meetingId);
+    const m = (await ref.get()).data();
+    if (!m || m.attendanceReminderAt) continue;
+    await notify([f.teacherId], { type: "attendance_form_reminder", title: "Attendance form not submitted", body: `Please submit attendance for "${f.title}" (${fmtTime(f.startAt)}).`, link: `/portal/teacher/attendance?class=${f.meetingId}`, refId: f.meetingId });
+    await ref.update({ attendanceReminderAt: nowIso() });
+    n++;
+  }
+  return n;
 }
 
 // Hour / minute / weekday in the academy timezone
@@ -140,6 +148,7 @@ const hourlyCleanup = async () => {
   await closeForgottenRooms();
   await finishAbandonedRecordings();
   await cleanupRecordings();
+  await recomputeTeacherPayments(); // safety net: "payment due" even if a live-class hook was missed
 };
 
 // For Cloud Scheduler (functions in scripts/build-api.mjs). Only two scheduler jobs, so
@@ -152,11 +161,11 @@ export const JOBS = {
     if (minute % 5 === 0) await guarded("retry", retryFailed)();
   },
   hourly: async () => {
-    const { hour, weekday } = localParts();
+    const { hour } = localParts();
     await guarded("hourly", hourlyCleanup)();
     if (hour === 2) await guarded("nightly", async () => { await createBackup("Automatic daily backup"); await retentionCleanup(); })();
     if (hour === 9) await guarded("alerts", sendInactivityAlerts)();
-    if ((weekday === "Sat" && hour === 10) || (weekday === "Sun" && hour === 18)) await guarded("attendance", sendAttendanceReminders)();
+    await guarded("attendance", sendAttendanceReminders)();
   },
 };
 
@@ -173,8 +182,8 @@ export function startJobs() {
   cron.schedule("41 * * * *", guarded("recordings", cleanupRecordings), tz);
   cron.schedule("0 2 * * *", guarded("nightly", async () => { await createBackup("Automatic daily backup"); await retentionCleanup(); }), tz);
   cron.schedule("0 9 * * *", guarded("alerts", sendInactivityAlerts), tz);
-  cron.schedule("0 10 * * 6", guarded("attendance-sat", sendAttendanceReminders), tz);
-  cron.schedule("0 18 * * 0", guarded("attendance-sun", sendAttendanceReminders), tz);
+  cron.schedule("17 * * * *", guarded("attendance-forms", sendAttendanceReminders), tz);
+  cron.schedule("29 * * * *", guarded("teacher-payments", recomputeTeacherPayments), tz);
   console.log(`⏱  Portal jobs scheduled (${config.timezone})`);
 }
 

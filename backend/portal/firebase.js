@@ -50,7 +50,13 @@ export const C = {
   favourites: "favourites",
   lessons: "lessons",
   notes: "studentNotes",
-  attendance: "attendance",
+  attendance: "attendance", // LEGACY weekly student self-report forms (read-only now)
+  classAttendance: "classAttendance", // one teacher-submitted form per conducted class
+  leaveRequests: "leaveRequests",
+  sessions: "sessions", // academic sessions (dates, subjects/teachers, students)
+  feePayments: "feePayments", // student fee PROOF per session (no payments are processed)
+  demoRequests: "demoRequests", // website demo bookings → demo classes with a guest link
+  teacherPayments: "teacherPayments", // teacher payment RECORDS per session (amount + proof entered by an admin)
   notifications: "notifications",
   pushTokens: "pushTokens",
   announcements: "announcements",

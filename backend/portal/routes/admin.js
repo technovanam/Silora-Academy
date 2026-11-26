@@ -6,12 +6,13 @@ import { Router } from "express";
 import { db, C, BACKUP_COLLECTIONS } from "../firebase.js";
 import { ah, fail, listData, toCsv, getMany, plural } from "../util.js";
 import { requirePerm, requireSuperAdmin } from "../middleware.js";
-import { getSettings, saveSettings, DEFAULT_SETTINGS, usersByRole, audit } from "../services/core.js";
+import { getSettings, saveSettings, DEFAULT_SETTINGS, usersByRole, audit, subjectTeachersOf, teacherIdsOf } from "../services/core.js";
 import { computeAlerts } from "../services/alerts.js";
 import { createBackup, listBackups, restoreBackup } from "../services/backup.js";
 import { deviceLabel } from "./auth.js";
 import { weekRows } from "./attendance.js";
 import { weekStartOf } from "../util.js";
+import { submittedForms, flattenForms, STATUS_LABEL } from "../services/attendance.js";
 
 const router = Router();
 
@@ -94,9 +95,9 @@ const REPORTS = {
     async rows() {
       const [students, teachers] = await Promise.all([usersByRole("student"), usersByRole("teacher")]);
       const t = Object.fromEntries(teachers.map((x) => [x.id, x.name]));
-      return students.filter((s) => !s.deletedAt).map((s) => ({ name: s.name, grade: s.grade, board: s.board, subjects: s.subjects, teacher: t[s.teacherId] || "", status: s.active ? "Active" : "Inactive", createdAt: s.createdAt, lastLoginAt: s.lastLoginAt || "" }));
+      return students.filter((s) => !s.deletedAt).map((s) => ({ studentId: s.studentCode || "", name: s.name, grade: s.grade, board: s.board, subjects: s.subjects, teacher: subjectTeachersOf(s).filter((r) => r.teacherId).map((r) => (r.subject ? `${r.subject}: ${t[r.teacherId] || ""}` : t[r.teacherId] || "")).join("; "), status: s.active ? "Active" : "Inactive", createdAt: s.createdAt, lastLoginAt: s.lastLoginAt || "" }));
     },
-    columns: ["name", "grade", "board", "subjects", "teacher", "status", "createdAt", "lastLoginAt"],
+    columns: ["studentId", "name", "grade", "board", "subjects", "teacher", "status", "createdAt", "lastLoginAt"],
   },
   teachers: {
     title: "Teachers & workload",
@@ -111,7 +112,7 @@ const REPORTS = {
             name: t.name,
             subjects: t.subjects,
             status: t.active ? "Active" : "Inactive",
-            students: students.filter((s) => s.teacherId === t.id && !s.deletedAt).length,
+            students: students.filter((s) => teacherIdsOf(s).includes(t.id) && !s.deletedAt).length,
             classesLast30Days: mine.filter((m) => m.status !== "cancelled" && m.startAt >= monthAgo && m.startAt <= new Date().toISOString()).length,
             hoursLast30Days: Math.round((mine.filter((m) => m.status !== "cancelled" && m.startAt >= monthAgo && m.startAt <= new Date().toISOString()).reduce((a, m) => a + (m.durationMin || 0), 0) / 60) * 10) / 10,
             upcomingClasses: mine.filter((m) => m.status === "scheduled" && m.startAt > new Date().toISOString()).length,
@@ -136,7 +137,18 @@ const REPORTS = {
     columns: ["title", "subject", "teacher", "students", "startAt", "durationMin", "status"],
   },
   attendance: {
-    title: "Attendance (one week)",
+    title: "Class attendance",
+    perm: "attendance",
+    async rows(q) {
+      let rows = flattenForms(await submittedForms());
+      if (q.from) rows = rows.filter((r) => r.startAt >= q.from);
+      if (q.to) rows = rows.filter((r) => r.startAt <= q.to);
+      return rows.map((r) => ({ date: r.date, day: r.day, student: r.studentName, subject: r.subject, class: r.title, teacher: r.teacherName, classNo: r.classNo, scheduledMin: r.scheduledMin, attendedMin: r.attendedMin, percent: r.percent, status: STATUS_LABEL[r.status] || r.status, interruptions: r.interruptions, remarks: r.remarks }));
+    },
+    columns: ["date", "day", "student", "subject", "class", "teacher", "classNo", "scheduledMin", "attendedMin", "percent", "status", "interruptions", "remarks"],
+  },
+  attendanceLegacy: {
+    title: "Legacy weekly attendance forms (one week)",
     perm: "attendance",
     async rows(q) {
       const rows = await weekRows(q.weekStart || weekStartOf(new Date()));

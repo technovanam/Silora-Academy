@@ -8,7 +8,7 @@ import { auth } from "../lib/firebase.js";
 import { PORTAL_API } from "../lib/api.js";
 import { Button, Field, Input, Notice, Loading } from "../ui/index.jsx";
 
-export const homeFor = (user) => (user ? `/portal/${user.role}` : "/portal/login");
+export const homeFor = (user) => (user?.role === "guest" ? "/portal/demo-done" : user ? `/portal/${user.role}` : "/portal/login");
 
 const POINTS = ["Join live classes in one click", "Your materials and schedule in one place", "Track attendance and progress"];
 // Photo: students studying together – Unsplash (free to use under the Unsplash License)

@@ -112,6 +112,7 @@ export function StudentRecordings() {
           <Loading />
         ) : (
           <Table
+            pageSize={10}
             rows={list}
             empty={<Empty icon={Video} title={q || subject ? "No matches" : "No recordings yet"} text={q || subject ? "Try another search." : "Recordings of your classes appear here after the class ends."} />}
             columns={[

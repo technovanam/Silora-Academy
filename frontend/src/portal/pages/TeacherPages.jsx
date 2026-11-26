@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
+import { SubjectSelect } from "../lib/subjects.jsx";
 import { fmtDate, fmtDateTime, fromNow, plural } from "../lib/format.js";
 import {
   Avatar, Badge, Button, Card, CardTitle, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, PageHeader, Progress, SearchInput,
@@ -44,6 +45,24 @@ export function TeacherDashboard() {
         <Link to="/portal/announcements" className="mb-6 flex items-center gap-3 rounded-2xl border border-brand/40 bg-brand-soft px-4 py-3">
           <Megaphone className="h-5 w-5 text-[#a77d00]" />
           <span className="min-w-0 flex-1 truncate font-semibold text-navy">{data.announcements[0].title}</span>
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      )}
+      {data.latestPayment && (
+        <Link to="/portal/teacher/payments" className="mb-6 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <CheckCircle2 className={cx("h-5 w-5", data.latestPayment.status === "paid" ? "text-emerald-600" : "text-slate-400")} />
+          <span className="min-w-0 flex-1 truncate text-sm text-navy">
+            <b>{data.latestPayment.sessionName}</b> · {data.latestPayment.held}/{data.latestPayment.scheduled} classes held ·{" "}
+            {data.latestPayment.status === "paid" ? `paid${data.latestPayment.amount ? ` ₹${Number(data.latestPayment.amount).toLocaleString("en-IN")}` : ""}` : data.latestPayment.status === "due" ? "payment due" : "in progress"}
+          </span>
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      )}
+      {s.pendingAttendance > 0 && (
+        <Link to="/portal/teacher/attendance" className="mb-6 flex items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <CheckCircle2 className="h-5 w-5 text-amber-700" />
+          <span className="min-w-0 flex-1 font-semibold text-navy">{plural(s.pendingAttendance, "class", "classes")} waiting for attendance</span>
+          <span className="text-sm font-semibold text-navy">Fill in</span>
           <ArrowRight className="h-4 w-4" />
         </Link>
       )}
@@ -286,7 +305,7 @@ function LessonDialog({ open, onClose, studentId, lesson, onSaved, subjects }) {
           <Input value={f.topic || ""} onChange={set("topic")} required maxLength={200} placeholder="e.g. Quadratic equations" />
         </Field>
         <Field label="Subject">
-          <Input value={f.subject || ""} onChange={set("subject")} maxLength={80} />
+          <SubjectSelect value={f.subject} onChange={set("subject")} only={subjects.length ? subjects : undefined} clearable />
         </Field>
         <Field label="Date">
           <Input type="date" value={f.date || ""} onChange={set("date")} />

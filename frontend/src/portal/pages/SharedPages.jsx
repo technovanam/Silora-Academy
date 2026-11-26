@@ -126,7 +126,7 @@ export function AnnouncementsPage() {
 
 // ---- Profile -----------------------------------------------------------------------
 export function ProfilePage() {
-  const { user, teacher, settings, reload } = useAuth();
+  const { user, teachers, settings, reload } = useAuth();
   const ui = useUi();
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [busy, setBusy] = useState(false);
@@ -190,7 +190,7 @@ export function ProfilePage() {
               {user.role === "student" && <Info label="Parent / guardian" value={c.parentName} />}
               {user.role === "student" && <Info label="Parent phone" value={c.parentPhone} />}
               {user.subjects?.length > 0 && <Info label="Subjects" value={user.subjects.join(", ")} />}
-              {teacher && <Info label="Your teacher" value={`${teacher.name}${teacher.subjects?.length ? ` · ${teacher.subjects.join(", ")}` : ""}`} />}
+              {teachers?.length > 0 && <Info label={teachers.length > 1 ? "Your teachers" : "Your teacher"} value={teachers.map((t) => `${t.subjects?.length ? `${t.subjects.join(", ")}: ` : ""}${t.name}`).join(" · ")} />}
             </dl>
             <p className="mt-5 text-xs text-muted">To change these details, please contact the academy office.</p>
           </Card>

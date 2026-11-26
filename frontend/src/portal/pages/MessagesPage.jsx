@@ -8,11 +8,12 @@
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Ban, Eye, Check, CheckCheck, ChevronDown, Copy, Download, Eraser, FileText, Image as ImageIcon, Loader2, MessagesSquare, MoreVertical, Paperclip, Pencil, PenSquare, Send, Trash2, X } from "lucide-react";
+import { ArrowLeft, Ban, Bell, BellOff, Eye, Check, CheckCheck, ChevronDown, Copy, Download, Eraser, FileText, Image as ImageIcon, Info, Loader2, Megaphone, MessagesSquare, MoreVertical, Paperclip, Pencil, PenSquare, Send, Settings2, Trash2, Users, X } from "lucide-react";
 import { api } from "../lib/api.js";
-import { useAuth } from "../lib/auth.jsx";
+import { can, useAuth } from "../lib/auth.jsx";
 import { fmtDate, fmtSize, fmtTime, fromNow } from "../lib/format.js";
 import { Avatar, Button, Card, Dialog, Empty, ErrorBox, IconButton, Loading, Menu, PageHeader, SearchInput, Segmented, cx, useUi } from "../ui/index.jsx";
+import { GroupAvatar, GroupDialog, MembersDialog, MessageInfoDialog } from "./GroupChat.jsx";
 
 const ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.mp3,.m4a,.zip";
 const MAX_MB = 25;
@@ -40,22 +41,19 @@ export function MessagesPage() {
 export function AdminMessagesPage() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "monitor" ? "monitor" : "direct";
+  const tabs = [
+    can(user, "messages") && { value: "direct", label: "Direct messages", icon: MessagesSquare },
+    can(user, "messages") && { value: "monitor", label: "Teacher–student chats", icon: Eye },
+    can(user, "groups") && { value: "groups", label: "Groups", icon: Users },
+  ].filter(Boolean);
+  const tab = tabs.find((t) => t.value === params.get("tab"))?.value || tabs[0]?.value;
   return (
     <>
       <PageHeader
         title="Messages"
-        subtitle={tab === "direct" ? "Message teachers and students directly. They can reply to you here." : "Every conversation between teachers and students. Read-only."}
+        subtitle={{ direct: "Message teachers and students directly. They can reply to you here.", monitor: "Every conversation between teachers and students. Read-only.", groups: "Group chats for batches, subjects and announcements. You post as Silora Academy." }[tab]}
       />
-      <Segmented
-        className="mb-4"
-        value={tab}
-        onChange={(t) => setParams(t === "direct" ? {} : { tab: t })}
-        options={[
-          { value: "direct", label: "Direct messages", icon: MessagesSquare },
-          { value: "monitor", label: "Teacher–student chats", icon: Eye },
-        ]}
-      />
+      {tabs.length > 1 && <Segmented className="mb-4" value={tab} onChange={(t) => setParams(t === tabs[0].value ? {} : { tab: t })} options={tabs} />}
       <Inbox key={tab} mode={tab} viewerId={user.id} viewerRole="admin" embedded />
     </>
   );
@@ -67,7 +65,8 @@ export function AdminMessagesPage() {
  */
 function Inbox({ mode, viewerId, viewerRole, embedded }) {
   const admin = mode === "monitor";
-  const base = { member: "/messages", direct: "/admin/dm", monitor: "/admin/messages" }[mode];
+  const groupAdmin = mode === "groups";
+  const base = { member: "/messages", direct: "/admin/dm", monitor: "/admin/messages", groups: "/admin/groups" }[mode];
   const [params, setParams] = useSearchParams();
   const active = params.get("c") || null;
   const tabParam = params.get("tab");
@@ -75,6 +74,7 @@ function Inbox({ mode, viewerId, viewerRole, embedded }) {
   const [error, setError] = useState(null);
   const [q, setQ] = useState("");
   const [picker, setPicker] = useState(false);
+  const [groupEdit, setGroupEdit] = useState(null); // {} = new group, or the group being edited
 
   const loadList = useCallback(async () => {
     try {
@@ -123,6 +123,13 @@ function Inbox({ mode, viewerId, viewerRole, embedded }) {
           </Button>
         </div>
       )}
+      {groupAdmin && (
+        <div className="-mt-1 mb-4 flex justify-end">
+          <Button icon={Users} onClick={() => setGroupEdit({})}>
+            New group
+          </Button>
+        </div>
+      )}
       <Card flush className="overflow-hidden">
         <div className={cx("grid min-h-[28rem] md:grid-cols-[20rem_1fr]", embedded ? "h-[calc(100svh-17rem)]" : "h-[calc(100svh-12.5rem)]")}>
           {/* Conversation list */}
@@ -141,7 +148,7 @@ function Inbox({ mode, viewerId, viewerRole, embedded }) {
                 <Empty
                   icon={MessagesSquare}
                   title={q ? "No matches" : "No conversations yet"}
-                  text={q ? "Try another name." : admin ? "Messages between teachers and students will appear here." : mode === "direct" ? "Message a teacher or student with “New message”." : "Start one with “New message”."}
+                  text={q ? "Try another name." : admin ? "Messages between teachers and students will appear here." : groupAdmin ? "Create a group for a batch, a subject or announcements." : mode === "direct" ? "Message a teacher or student with “New message”." : "Start one with “New message”."}
                   className="py-14"
                 />
               ) : (
@@ -159,14 +166,30 @@ function Inbox({ mode, viewerId, viewerRole, embedded }) {
           {/* Thread */}
           <div className={cx("min-h-0 flex-col", active ? "flex" : "hidden md:flex")}>
             {active ? (
-              <Thread key={active} id={active} base={base} admin={admin} viewerId={viewerId} summary={current} onBack={() => open(null)} onChanged={loadList} />
+              <Thread key={active} id={active} base={base} admin={admin} groupAdmin={groupAdmin} viewerId={viewerId} summary={current} onBack={() => open(null)} onChanged={loadList} onEditGroup={setGroupEdit} />
             ) : (
               <Empty icon={MessagesSquare} title="Select a conversation" text={admin ? "Choose a conversation to read it." : "Choose a conversation, or start a new one."} className="m-auto" />
             )}
           </div>
         </div>
       </Card>
-      {!admin && (
+      {groupAdmin && (
+        <GroupDialog
+          group={groupEdit}
+          onClose={() => setGroupEdit(null)}
+          onSaved={async (id) => {
+            setGroupEdit(null);
+            await loadList();
+            open(id);
+          }}
+          onDeleted={async () => {
+            setGroupEdit(null);
+            open(null);
+            await loadList();
+          }}
+        />
+      )}
+      {!admin && !groupAdmin && (
         <ContactPicker
           base={base}
           groupByRole={mode === "direct"}
@@ -206,23 +229,24 @@ const firstName = (n) => String(n || "").trim().split(/s+/)[0];
 
 function ConversationRow({ c, admin, viewerId, active, onClick }) {
   const last = c.lastMessage;
+  const group = c.kind === "group";
   const title = admin ? `${c.teacherName || "Teacher"} · ${c.studentName || "Student"}` : c.otherName || "";
-  const mineLast = !admin && last && last.senderId === viewerId;
-  const who = last ? (mineLast ? "" : admin ? `${firstName(last.senderId === c.teacherId ? c.teacherName : c.studentName) || (last.senderRole === "teacher" ? "Teacher" : "Student")}: ` : "") : "";
+  const mineLast = !admin && last && !last.system && last.senderId === viewerId;
+  const who = last ? (mineLast || last.system ? "" : group ? `${firstName(last.senderName) || "Member"}: ` : admin ? `${firstName(last.senderId === c.teacherId ? c.teacherName : c.studentName) || (last.senderRole === "teacher" ? "Teacher" : "Student")}: ` : "") : "";
   const body = last ? (last.deleted ? (mineLast ? "You deleted this message" : "This message was deleted") : last.text || (last.file ? `📎 ${last.file}` : "")) : "";
   const preview = last ? `${who}${body}` : "No messages yet";
   return (
     <button type="button" onClick={onClick} className={cx("flex w-full items-center gap-3 px-4 py-3 text-left transition", active ? "bg-amber-50/70" : "hover:bg-slate-50")}>
-      <Avatar name={admin ? c.teacherName : c.otherName} />
+      {group ? <GroupAvatar announcement={c.onlyAdminsPost} /> : <Avatar name={admin ? c.teacherName : c.otherName} />}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <p className={cx("min-w-0 flex-1 truncate text-sm", c.unread ? "font-bold text-navy" : "font-semibold text-ink")}>{title}</p>
           {c.lastAt && <span className="shrink-0 text-[11px] text-slate-400">{fromNow(c.lastAt)}</span>}
         </div>
-        {admin ? <p className="truncate text-[11px] text-slate-400">Teacher · Student</p> : c.otherRole && (c.kind === "direct" || c.otherRole === "admin") ? <p className="truncate text-[11px] text-slate-400">{ROLE_LABEL[c.otherRole]}</p> : null}
+        {group ? <p className="flex items-center gap-1 truncate text-[11px] text-slate-400">{c.memberCount} members{c.muted && <BellOff className="h-3 w-3" />}</p> : admin ? <p className="truncate text-[11px] text-slate-400">Teacher · Student</p> : c.otherRole && (c.kind === "direct" || c.otherRole === "admin") ? <p className="truncate text-[11px] text-slate-400">{ROLE_LABEL[c.otherRole]}</p> : null}
         <div className="flex items-center gap-2">
           {mineLast && !last.deleted && <Ticks state={tickState(last.at, c)} className="-mr-1 shrink-0" />}
-          <p className={cx("min-w-0 flex-1 truncate text-[13px]", last?.deleted && "italic", c.unread ? "font-medium text-ink" : "text-muted")}>{preview}</p>
+          <p className={cx("min-w-0 flex-1 truncate text-[13px]", (last?.deleted || last?.system) && "italic", c.unread ? "font-medium text-ink" : "text-muted")}>{preview}</p>
           {c.unread > 0 && <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">{c.unread > 99 ? "99+" : c.unread}</span>}
         </div>
       </div>
@@ -244,7 +268,7 @@ function mergeChanges(cur, changes) {
   return [...map.values()].sort(byTime);
 }
 
-function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
+function Thread({ id, base, admin, groupAdmin, viewerId, summary, onBack, onChanged, onEditGroup }) {
   const ui = useUi();
   const [conv, setConv] = useState(summary || null);
   const [messages, setMessages] = useState(null);
@@ -253,6 +277,8 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [members, setMembers] = useState(false);
+  const [info, setInfo] = useState(null);
   const listRef = useRef(null);
   const stick = useRef(true);
   const cursor = useRef(null);
@@ -263,12 +289,12 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
   }, [messages]);
 
   const markRead = useCallback(() => {
-    if (admin) return; // an admin reading changes nothing
+    if (admin || groupAdmin) return; // an admin reading changes nothing
     api
       .post(`${base}/conversations/${id}/read`)
       .then(() => window.dispatchEvent(new Event("portal:messages-read")))
       .catch(() => {});
-  }, [admin, base, id]);
+  }, [admin, groupAdmin, base, id]);
 
   // First page
   useEffect(() => {
@@ -383,27 +409,52 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
     if (removeChat) onBack();
   };
 
+  const group = conv?.kind === "group";
   const title = admin ? `${conv?.teacherName || ""} · ${conv?.studentName || ""}` : conv?.otherName;
-  const nameOf = (m) => (m.senderId === conv?.teacherId ? conv?.teacherName : conv?.studentName);
+  const nameOf = (m) => (group ? `${m.senderName || "Member"}${m.senderRole === "teacher" ? " · Teacher" : ""}` : m.senderId === conv?.teacherId ? conv?.teacherName : conv?.studentName);
+
+  const toggleMute = async () => {
+    try {
+      await api.post(`${base}/conversations/${id}/mute`, { muted: !conv.muted });
+      ui.toast(conv.muted ? "Notifications on" : "Group muted");
+      setConv((c) => ({ ...c, muted: !c.muted }));
+      onChanged?.();
+    } catch (e) {
+      ui.error(e);
+    }
+  };
+  const menuItems = group
+    ? [
+        { label: "Members", icon: Users, onClick: () => setMembers(true), hidden: !conv.showMembers },
+        { label: "Edit group", icon: Settings2, onClick: () => onEditGroup?.(conv), hidden: !groupAdmin },
+        { label: conv.muted ? "Unmute notifications" : "Mute notifications", icon: conv.muted ? Bell : BellOff, onClick: toggleMute, hidden: groupAdmin },
+        { label: "Clear chat", icon: Eraser, onClick: () => clearChat(false), hidden: groupAdmin },
+      ]
+    : [
+        { label: "Clear chat", icon: Eraser, onClick: () => clearChat(false) },
+        { label: "Delete chat", icon: Trash2, danger: true, onClick: () => clearChat(true) },
+      ];
 
   return (
     <>
       <div className="flex items-center gap-3 border-b border-line px-3 py-2.5 sm:px-4">
         <IconButton icon={ArrowLeft} label="Back" onClick={onBack} className="md:hidden" />
-        {conv && <Avatar name={admin ? conv.teacherName : conv.otherName} />}
-        <div className="min-w-0 flex-1">
+        {conv && (group ? <GroupAvatar announcement={conv.onlyAdminsPost} /> : <Avatar name={admin ? conv.teacherName : conv.otherName} />)}
+        <button type="button" disabled={!group || !conv?.showMembers} onClick={() => setMembers(true)} className="min-w-0 flex-1 text-left">
           <p className="truncate text-sm font-semibold text-navy">{title || "…"}</p>
-          <p className="truncate text-xs text-muted">{admin ? "Teacher · Student" : conv?.kind === "direct" || conv?.otherRole === "admin" ? ROLE_LABEL[conv.otherRole] || "" : conv?.otherId ? "Private conversation" : ""}</p>
-        </div>
-        {!admin && messages && (
-          <Menu
-            trigger={<IconButton icon={MoreVertical} label="Chat options" />}
-            items={[
-              { label: "Clear chat", icon: Eraser, onClick: () => clearChat(false) },
-              { label: "Delete chat", icon: Trash2, danger: true, onClick: () => clearChat(true) },
-            ]}
-          />
-        )}
+          <p className="truncate text-xs text-muted">
+            {group
+              ? [conv.onlyAdminsPost && "Announcements", `${conv.memberCount} members`, conv.muted && "muted"].filter(Boolean).join(" · ")
+              : admin
+                ? "Teacher · Student"
+                : conv?.kind === "direct" || conv?.otherRole === "admin"
+                  ? ROLE_LABEL[conv.otherRole] || ""
+                  : conv?.otherId
+                    ? "Private conversation"
+                    : ""}
+          </p>
+        </button>
+        {!admin && messages && conv && <Menu trigger={<IconButton icon={MoreVertical} label="Chat options" />} items={menuItems} />}
       </div>
 
       <div ref={listRef} onScroll={onScroll} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-slate-50/60 px-3 py-4 sm:px-5" data-lenis-prevent>
@@ -412,7 +463,7 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
         ) : !messages ? (
           <Loading className="py-16" />
         ) : messages.length === 0 ? (
-          <Empty icon={MessagesSquare} title="No messages yet" text={admin ? "" : "Say hello, or share a worksheet or a photo of your work."} className="py-14" />
+          <Empty icon={MessagesSquare} title="No messages yet" text={admin ? "" : group ? "Messages to this group appear here." : "Say hello, or share a worksheet or a photo of your work."} className="py-14" />
         ) : (
           <>
             {hasMore && (
@@ -425,7 +476,18 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
             {messages.map((m, i) => {
               const prev = messages[i - 1];
               const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
-              const grouped = !newDay && prev && prev.senderId === m.senderId && new Date(m.createdAt) - new Date(prev.createdAt) < 5 * 60000;
+              const grouped = !newDay && prev && !prev.system && prev.senderId === m.senderId && new Date(m.createdAt) - new Date(prev.createdAt) < 5 * 60000;
+              if (m.system)
+                return (
+                  <React.Fragment key={m.id}>
+                    {newDay && (
+                      <div className="my-3 flex justify-center">
+                        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">{dayLabel(m.createdAt)}</span>
+                      </div>
+                    )}
+                    <p className="mx-auto my-2 w-fit max-w-[90%] rounded-lg bg-slate-100 px-3 py-1 text-center text-[11px] text-slate-500">{m.text}</p>
+                  </React.Fragment>
+                );
               // Admin view: teacher on the right, student on the left
               const mine = admin ? m.senderId === conv?.teacherId : m.senderId === viewerId;
               return (
@@ -440,14 +502,16 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
                     mine={mine}
                     own={!admin && m.senderId === viewerId}
                     admin={admin}
+                    moderate={groupAdmin}
                     grouped={grouped}
-                    name={admin ? nameOf(m) : null}
+                    name={admin || (group && !mine) ? nameOf(m) : null}
                     convId={id}
                     base={base}
                     ticks={!admin && m.senderId === viewerId && !m.deleted ? tickState(m.createdAt, conv) : null}
                     editingThis={editing?.id === m.id}
                     onEdit={() => setEditing(m)}
                     onDelete={() => setDeleting(m)}
+                    onInfo={group && (groupAdmin || m.senderId === viewerId) ? () => setInfo(m) : null}
                   />
                 </React.Fragment>
               );
@@ -456,8 +520,30 @@ function Thread({ id, base, admin, viewerId, summary, onBack, onChanged }) {
         )}
       </div>
 
-      {!admin && messages && <Composer base={base} id={id} onSent={onSent} editing={editing} onEdited={onEdited} onCancelEdit={() => setEditing(null)} />}
-      {!admin && <DeleteDialog m={deleting} viewerId={viewerId} onClose={() => setDeleting(null)} onDelete={remove} />}
+      {!admin && messages && group && !conv.canPost ? (
+        <p className="flex items-center justify-center gap-2 border-t border-line bg-white p-3 text-center text-xs text-muted">
+          <Megaphone className="h-4 w-4" />
+          Only Silora Academy can send messages in this group
+        </p>
+      ) : (
+        !admin && messages && <Composer base={base} id={id} onSent={onSent} editing={editing} onEdited={onEdited} onCancelEdit={() => setEditing(null)} />
+      )}
+      {!admin && <DeleteDialog m={deleting} viewerId={viewerId} moderate={groupAdmin} onClose={() => setDeleting(null)} onDelete={remove} />}
+      {group && members && (
+        <MembersDialog
+          base={base}
+          id={id}
+          admin={groupAdmin}
+          onClose={() => setMembers(false)}
+          onChanged={() =>
+            api
+              .get(`${base}/conversations/${id}`, { since: cursor.current || "0" })
+              .then((r) => setConv(r.conversation))
+              .catch(() => {})
+          }
+        />
+      )}
+      {info && <MessageInfoDialog base={base} id={id} m={info} onClose={() => setInfo(null)} />}
     </>
   );
 }
@@ -467,7 +553,7 @@ const DELETE_WINDOW_MS = 48 * 3600000;
 const canEdit = (m) => !m.deleted && !!m.text && Date.now() - new Date(m.createdAt).getTime() < EDIT_WINDOW_MS;
 const canDeleteForEveryone = (m) => !m.deleted && Date.now() - new Date(m.createdAt).getTime() < DELETE_WINDOW_MS;
 
-function Bubble({ m, mine, own, admin, grouped, name, convId, base, ticks, editingThis, onEdit, onDelete }) {
+function Bubble({ m, mine, own, admin, moderate, grouped, name, convId, base, ticks, editingThis, onEdit, onDelete, onInfo }) {
   const ui = useUi();
   const [showEdits, setShowEdits] = useState(false);
   const copy = () =>
@@ -477,13 +563,15 @@ function Bubble({ m, mine, own, admin, grouped, name, convId, base, ticks, editi
       .catch(() => {});
 
   // Admins see what was deleted (struck through) – teachers & students see a placeholder
-  const deletedForMember = m.deleted && !admin;
+  const seeAll = admin || moderate; // admins see deleted / edited originals
+  const deletedForMember = m.deleted && !seeAll;
   const items = admin
     ? [{ label: "Copy text", icon: Copy, onClick: copy, hidden: !m.text }]
     : [
         { label: "Copy text", icon: Copy, onClick: copy, hidden: !m.text || m.deleted },
+        { label: "Message info", icon: Info, onClick: onInfo, hidden: !onInfo || m.deleted },
         { label: "Edit", icon: Pencil, onClick: onEdit, hidden: !own || !canEdit(m) },
-        { label: "Delete", icon: Trash2, onClick: onDelete, danger: true },
+        { label: moderate && !own ? "Remove message" : "Delete", icon: Trash2, onClick: onDelete, danger: true, hidden: moderate && m.deleted },
       ];
   const hasMenu = items.some((i) => !i.hidden);
 
@@ -520,15 +608,15 @@ function Bubble({ m, mine, own, admin, grouped, name, convId, base, ticks, editi
         {ticks && <Ticks state={ticks} />}
         <span>
           {m.editedAt && !deletedForMember && (
-            <button type="button" disabled={!admin || !m.edits?.length} onClick={() => setShowEdits((s) => !s)} className={cx("mr-1 font-medium", admin && m.edits?.length && "underline decoration-dotted")}>
+            <button type="button" disabled={!seeAll || !m.edits?.length} onClick={() => setShowEdits((s) => !s)} className={cx("mr-1 font-medium", seeAll && m.edits?.length && "underline decoration-dotted")}>
               Edited
             </button>
           )}
-          {admin && m.deleted && <span className="mr-1 font-semibold text-rose-500">Deleted by sender ·</span>}
+          {seeAll && m.deleted && <span className="mr-1 font-semibold text-rose-500">Deleted ·</span>}
           {fmtTime(m.createdAt)}
         </span>
       </p>
-      {admin && showEdits && m.edits?.length > 0 && (
+      {seeAll && showEdits && m.edits?.length > 0 && (
         <div className="mt-1 max-w-[85%] rounded-xl bg-white px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200 sm:max-w-[70%]">
           <p className="mb-1 font-semibold text-slate-600">Earlier versions</p>
           {m.edits.map((e, i) => (
@@ -543,11 +631,11 @@ function Bubble({ m, mine, own, admin, grouped, name, convId, base, ticks, editi
   );
 }
 
-function DeleteDialog({ m, viewerId, onClose, onDelete }) {
+function DeleteDialog({ m, viewerId, moderate, onClose, onDelete }) {
   const [busy, setBusy] = useState(null);
   useEffect(() => setBusy(null), [m]);
   if (!m) return null;
-  const everyone = m.senderId === viewerId && canDeleteForEveryone(m);
+  const everyone = moderate || (m.senderId === viewerId && canDeleteForEveryone(m));
   const run = async (scope) => {
     setBusy(scope);
     await onDelete(m, scope);
@@ -562,9 +650,11 @@ function DeleteDialog({ m, viewerId, onClose, onDelete }) {
             Delete for everyone
           </Button>
         )}
-        <Button variant={everyone ? "outline" : "danger"} loading={busy === "me"} disabled={!!busy} onClick={() => run("me")} className="sm:min-w-48">
-          Delete for me
-        </Button>
+        {!moderate && (
+          <Button variant={everyone ? "outline" : "danger"} loading={busy === "me"} disabled={!!busy} onClick={() => run("me")} className="sm:min-w-48">
+            Delete for me
+          </Button>
+        )}
         <Button variant="ghost" disabled={!!busy} onClick={onClose} className="sm:min-w-48">
           Cancel
         </Button>

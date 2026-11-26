@@ -58,6 +58,8 @@ const StudentDemoForm = () => {
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4 lg:flex-1 lg:justify-between">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Spam trap – hidden from people, bots fill it in */}
+        <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
         <FloatInput id="sd-name" type="text" name="name" label="Student's name" Icon={User} required />
         <FloatInput
           id="sd-email"

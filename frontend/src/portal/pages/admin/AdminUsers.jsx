@@ -4,14 +4,61 @@ import {
   ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, Copy, KeyRound, Lock, Pencil, Plus, RotateCcw, ShieldCheck, Trash2, Unlock, UserCheck, UserMinus, Users, GraduationCap,
 } from "lucide-react";
 import { api } from "../../lib/api.js";
+import { rowsOf, teacherIdsOf } from "../../lib/assign.js";
+import { SubjectSelect, useSubjects } from "../../lib/subjects.jsx";
 import { useAuth, can } from "../../lib/auth.jsx";
 import { fmtDate, fmtDateTime, fmtGrade, fmtLastSeen, fmtName, fmtPhone, plural } from "../../lib/format.js";
 import {
-  Avatar, Badge, Button, Card, CardTitle, Checkbox, Dialog, Empty, ErrorBox, Field, Input, Loading, Notice, PageHeader, SearchInput, Segmented, Select, StatCard, Table, Toggle, useAsync, useUi,
+  Avatar, Badge, Button, Card, CardTitle, Checkbox, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Notice, PageHeader, SearchInput, Segmented, Select, StatCard, Table, Toggle, useAsync, useUi,
 } from "../../ui/index.jsx";
 
 const ROLE_WORD = { student: "student", teacher: "teacher", admin: "admin" };
-const splitList = (s) => String(s || "").split(",").map((x) => x.trim()).filter(Boolean);
+
+// ---- Subjects & teachers: one teacher per subject ----------------------------------------
+const same = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+const cleanRows = (rows) => {
+  const out = rows.map((r) => ({ subject: (r.subject || "").trim(), teacherId: r.teacherId || null })).filter((r) => r.subject || r.teacherId);
+  if (out.some((r) => !r.subject)) throw new Error("Enter the subject for each teacher");
+  return out;
+};
+
+export function SubjectTeachersEditor({ rows, onChange, teachers }) {
+  const active = teachers.filter((t) => t.active || rows.some((r) => r.teacherId === t.id));
+  const setRow = (i, patch) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  // Only teachers who teach the subject (the backend refuses others); teachers with no
+  // subject list and the one already chosen stay available
+  const optionsFor = (subject, current) =>
+    active
+      .filter((t) => !subject || !(t.subjects || []).length || (t.subjects || []).some((x) => same(x, subject)) || t.id === current)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((t) => ({ value: t.id, label: t.name, hint: (t.subjects || []).length ? (t.subjects || []).join(", ") : "No subjects set" }));
+  const dupes = new Set(rows.map((r) => r.subject.trim().toLowerCase()).filter((x, i, a) => x && a.indexOf(x) !== i));
+  return (
+    <div className="space-y-2">
+      {rows.length === 0 && <p className="text-sm text-muted">No subjects yet. Add each subject the student takes and choose its teacher.</p>}
+      {rows.map((r, i) => (
+        <div key={i} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-2 sm:flex-row sm:items-center">
+          <SubjectSelect value={r.subject} onChange={(v) => setRow(i, { subject: v })} className="sm:w-56" />
+          <div className="min-w-0 flex-1">
+            <Select value={r.teacherId} onChange={(v) => setRow(i, { teacherId: v })} options={optionsFor(r.subject, r.teacherId)} placeholder={r.subject ? "No teacher yet" : "Choose the subject first"} emptyText={`No active teacher teaches ${r.subject} yet`} clearable searchable />
+          </div>
+          <IconButton icon={Trash2} label="Remove subject" onClick={() => onChange(rows.filter((_, j) => j !== i))} />
+        </div>
+      ))}
+      {dupes.size > 0 && <p className="text-xs text-red-600">Each subject can only be listed once.</p>}
+      <Button type="button" variant="outline" size="sm" icon={Plus} onClick={() => onChange([...rows, { subject: "", teacherId: null }])}>
+        Add subject
+      </Button>
+    </div>
+  );
+}
+
+// Teacher subjects: several from the academy's list
+function TeacherSubjects({ value, onChange }) {
+  const all = useSubjects();
+  const names = [...all, ...value.filter((v) => !all.some((a) => same(a, v)))];
+  return <Select multiple value={value} onChange={onChange} options={names.map((n) => ({ value: n, label: n }))} placeholder="Choose subjects" searchable={names.length > 8} emptyText="No subjects yet – add them on the Subjects page" />;
+}
 
 // ---- Credentials shown once after create / reset ------------------------------------------
 function EmailStatus({ email, to }) {
@@ -73,7 +120,7 @@ function CredentialsDialog({ creds, onClose }) {
 }
 
 // ---- Create / edit -------------------------------------------------------------------------
-export function UserFormDialog({ open, onClose, role, user, teachers = [], onSaved, catalog }) {
+export function UserFormDialog({ open, onClose, role, user, teachers = [], onSaved, catalog, prefill }) {
   const ui = useUi();
   const { user: me } = useAuth();
   const canContacts = can(me, "contacts");
@@ -96,14 +143,16 @@ export function UserFormDialog({ open, onClose, role, user, teachers = [], onSav
       address: c.address || "",
       grade: user?.grade || "",
       board: user?.board || "",
-      subjects: (user?.subjects || []).join(", "),
-      teacherId: user?.teacherId || null,
+      subjects: user?.subjects || [],
+      studentCode: user?.studentCode || "",
+      rows: rowsOf(user).map((r) => ({ subject: r.subject || "", teacherId: r.teacherId || null })),
       password: "",
       sendCredentials: true,
       superAdmin: false,
       permissions: {},
+      ...(!user && prefill ? prefill : {}),
     });
-  }, [open, user]);
+  }, [open, user]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v?.target ? v.target.value : v }));
 
   const save = async (e) => {
@@ -111,16 +160,21 @@ export function UserFormDialog({ open, onClose, role, user, teachers = [], onSav
     setError(null);
     setBusy(true);
     try {
-      const body = { name: f.name, grade: f.grade, board: f.board, subjects: splitList(f.subjects) };
+      const body = { name: f.name, grade: f.grade, board: f.board };
+      if (role === "student") {
+        body.studentCode = f.studentCode;
+        const rows = cleanRows(f.rows || []);
+        if (new Set(rows.map((r) => r.subject.toLowerCase())).size !== rows.length) throw new Error("Each subject can only be listed once");
+        body.subjectTeachers = rows;
+      } else body.subjects = f.subjects;
       if (!editing || canContacts) Object.assign(body, { email: f.email, phone: f.phone, parentName: f.parentName, parentPhone: f.parentPhone, address: f.address });
       if (editing) {
         await api.patch(`/admin/users/${user.id}`, body);
-        if (role === "student" && f.teacherId !== (user.teacherId || null)) await api.post(`/admin/users/${user.id}/assign`, { teacherId: f.teacherId });
         ui.toast("Saved");
         onSaved?.();
         onClose();
       } else {
-        const r = await api.post("/admin/users", { ...body, role, teacherId: f.teacherId, password: f.password || undefined, sendCredentials: f.sendCredentials, superAdmin: f.superAdmin, permissions: f.permissions });
+        const r = await api.post("/admin/users", { ...body, role, password: f.password || undefined, sendCredentials: f.sendCredentials, superAdmin: f.superAdmin, permissions: f.permissions });
         onSaved?.(r.id);
         ui.toast(`${f.name} added${r.email?.status === "sent" ? " – login details emailed" : ""}`);
         setCreds({ email: f.email, password: r.tempPassword || f.password, emailResult: r.email });
@@ -167,6 +221,9 @@ export function UserFormDialog({ open, onClose, role, user, teachers = [], onSav
           )}
           {role === "student" && (
             <>
+              <Field label="Student ID" hint="The academy's own ID – shown on sessions, fees and registers">
+                <Input value={f.studentCode || ""} onChange={(e) => set("studentCode")(e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder="e.g. SA260905" maxLength={30} />
+              </Field>
               <Field label="Grade">
                 <Input value={f.grade || ""} onChange={set("grade")} placeholder="e.g. Grade 9" maxLength={40} />
               </Field>
@@ -183,14 +240,14 @@ export function UserFormDialog({ open, onClose, role, user, teachers = [], onSav
                   </Field>
                 </>
               )}
-              <Field label="Teacher" className="sm:col-span-2">
-                <Select value={f.teacherId} onChange={set("teacherId")} options={teachers.filter((t) => t.active).map((t) => ({ value: t.id, label: t.name, hint: t.subjects?.join(", ") }))} placeholder="Not assigned yet" clearable />
+              <Field label="Subjects & teachers" hint="One teacher per subject – e.g. Mathematics with one teacher, Science with another" className="sm:col-span-2">
+                <SubjectTeachersEditor rows={f.rows || []} onChange={set("rows")} teachers={teachers} />
               </Field>
             </>
           )}
-          {role !== "admin" && (
-            <Field label="Subjects" hint="Separate with commas" className="sm:col-span-2">
-              <Input value={f.subjects || ""} onChange={set("subjects")} placeholder="Mathematics, Physics" />
+          {role === "teacher" && (
+            <Field label="Subjects" hint="From the academy's subject list (Subjects page)" className="sm:col-span-2">
+              <TeacherSubjects value={f.subjects || []} onChange={set("subjects")} />
             </Field>
           )}
           {!editing && (
@@ -238,7 +295,8 @@ export function AdminUsersPage({ role }) {
   const { data, loading, error, reload } = useAsync(() => api.get("/admin/users", { role, status }), [role, status]);
   const dir = useAsync(() => api.get("/admin/directory"), []);
   const teachers = dir.data?.teachers || [];
-  const list = (data?.users || []).filter((u) => (!teacherFilter || (teacherFilter === "none" ? !u.teacherId : u.teacherId === teacherFilter)) && (!q || [u.name, u.grade, u.board, u.teacherName, u.contact?.email, u.contact?.phone, (u.subjects || []).join(" ")].join(" ").toLowerCase().includes(q.toLowerCase())));
+  const needsTeacher = (u) => !teacherIdsOf(u).length || (u.unassignedSubjects || []).length > 0;
+  const list = (data?.users || []).filter((u) => (!teacherFilter || (teacherFilter === "none" ? needsTeacher(u) : teacherIdsOf(u).includes(teacherFilter))) && (!q || [u.name, u.studentCode, u.grade, u.board, u.teacherName, u.contact?.email, u.contact?.phone, (u.subjects || []).join(" ")].join(" ").toLowerCase().includes(q.toLowerCase())));
   const contacts = data?.canViewContacts;
 
   const columns = [
@@ -249,14 +307,29 @@ export function AdminUsersPage({ role }) {
         <span className="flex items-center gap-3">
           {role !== "teacher" && <Avatar name={u.name} size="sm" />}
           <span className="min-w-0">
-            <span className="block font-semibold text-navy">{fmtName(u.name)}</span>
+            <span className="block font-semibold text-navy">{fmtName(u.name)}{u.studentCode && <span className="ml-2 rounded bg-surface px-1.5 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-line">{u.studentCode}</span>}</span>
             {contacts && <span className="block text-xs text-muted">{u.contact?.email?.toLowerCase()}</span>}
           </span>
         </span>
       ),
     },
     role === "student" && { key: "grade", label: "Grade / board", render: (u) => [fmtGrade(u.grade), u.board].filter(Boolean).join(" · ") || "—", className: "whitespace-nowrap" },
-    role === "student" && { key: "teacherName", label: "Teacher", render: (u) => (u.teacherName ? fmtName(u.teacherName) : <Badge tone="amber">Unassigned</Badge>) },
+    role === "student" && {
+      key: "teacherName",
+      label: "Subjects & teachers",
+      className: "max-w-[320px]",
+      render: (u) => (
+        <span className="block space-y-1">
+          {rowsOf(u).filter((r) => r.teacherId).map((r, i) => (
+            <span key={i} className="block text-sm">
+              {r.subject && <span className="text-muted">{r.subject} · </span>}
+              {fmtName(teachers.find((t) => t.id === r.teacherId)?.name || "—")}
+            </span>
+          ))}
+          {!teacherIdsOf(u).length ? <Badge tone="amber">Unassigned</Badge> : (u.unassignedSubjects || []).length > 0 && <Badge tone="amber">No teacher: {u.unassignedSubjects.join(", ")}</Badge>}
+        </span>
+      ),
+    },
     role === "teacher" && { key: "subjects", label: "Subjects", render: (u) => (u.subjects || []).join(", ") || "—" },
     role === "teacher" && { key: "studentCount", label: "Students", render: (u) => u.studentCount },
     contacts && { key: "phone", label: "Phone", render: (u) => fmtPhone(u.contact?.phone) || "—", className: "whitespace-nowrap tabular-nums" },
@@ -292,7 +365,7 @@ export function AdminUsersPage({ role }) {
           ]}
         />
         <div className="flex-1" />
-        {role === "student" && <Select className="w-full sm:w-52" value={teacherFilter} onChange={setTeacherFilter} options={[{ value: "none", label: "Unassigned" }, ...teachers.map((t) => ({ value: t.id, label: t.name }))]} placeholder="All teachers" clearable />}
+        {role === "student" && <Select className="w-full sm:w-52" value={teacherFilter} onChange={setTeacherFilter} options={[{ value: "none", label: "Needs a teacher" }, ...teachers.map((t) => ({ value: t.id, label: t.name }))]} placeholder="All teachers" clearable />}
         <SearchInput value={q} onChange={setQ} className="w-full sm:w-72" placeholder={`Search ${role}s…`} />
       </div>
       <ErrorBox error={error} onRetry={reload} />
@@ -315,7 +388,7 @@ export function AdminUserDetail() {
   const [editing, setEditing] = useState(false);
   const [creds, setCreds] = useState(null);
   const [assign, setAssign] = useState(false);
-  const [teacherId, setTeacherId] = useState(null);
+  const [rows, setRows] = useState([]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -378,7 +451,7 @@ export function AdminUserDetail() {
           </Link>
         }
         title={u.name}
-        subtitle={u.role === "student" ? [u.grade, u.board].filter(Boolean).join(" · ") : u.role === "teacher" ? (u.subjects || []).join(", ") : u.superAdmin ? "Super admin" : "Admin"}
+        subtitle={u.role === "student" ? [u.studentCode && `ID ${u.studentCode}`, u.grade, u.board].filter(Boolean).join(" · ") : u.role === "teacher" ? (u.subjects || []).join(", ") : u.superAdmin ? "Super admin" : "Admin"}
         actions={
           !u.deletedAt && (
             <>
@@ -388,11 +461,11 @@ export function AdminUserDetail() {
                   variant="outline"
                   icon={UserCheck}
                   onClick={() => {
-                    setTeacherId(u.teacherId || null);
+                    setRows(rowsOf(u).map((r) => ({ subject: r.subject || "", teacherId: r.teacherId || null })));
                     setAssign(true);
                   }}
                 >
-                  {u.teacherId ? "Change teacher" : "Assign teacher"}
+                  {teacherIdsOf(u).length ? "Change teachers" : "Assign teachers"}
                 </Button>
               )}
             </>
@@ -419,10 +492,27 @@ export function AdminUserDetail() {
 
       {u.role === "student" && (
         <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={UserCheck} label="Teacher" value={<span className="text-lg">{u.teacher?.name || "Unassigned"}</span>} />
+          <StatCard
+            icon={UserCheck}
+            label="Subjects & teachers"
+            value={
+              <span className="block space-y-0.5 text-sm font-medium">
+                {(u.teachers || []).length ? (
+                  u.teachers.map((t, i) => (
+                    <span key={i} className="block">
+                      {t.subject && <span className="text-muted">{t.subject} · </span>}
+                      {t.name ? fmtName(t.name) : <span className="text-amber-700">No teacher yet</span>}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-lg">Unassigned</span>
+                )}
+              </span>
+            }
+          />
           <StatCard icon={CalendarDays} label="Upcoming classes" value={u.upcomingClasses} tone="blue" />
           <StatCard icon={CheckCircle2} label="Classes (all time)" value={u.totalClasses} tone="green" />
-          <StatCard icon={ClipboardCheck} label="Attendance forms" value={u.attendanceSubmitted} tone="violet" />
+          <StatCard icon={ClipboardCheck} label="Attendance" value={u.attendance?.percent === null || u.attendance?.percent === undefined ? "—" : `${u.attendance.percent}%`} hint={u.attendance ? `${u.attendance.attended}/${u.attendance.conducted} classes · ${u.attendance.uninformed} uninformed` : ""} tone="violet" />
         </div>
       )}
 
@@ -460,7 +550,7 @@ export function AdminUserDetail() {
                       <Link to={`/portal/admin/users/${s.id}`} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface">
                         <Avatar name={s.name} size="sm" />
                         <span className="min-w-0 flex-1 text-sm font-semibold text-navy">{s.name}</span>
-                        <span className="text-xs text-muted">{[s.grade, s.board].filter(Boolean).join(" · ")}</span>
+                        <span className="text-xs text-muted">{[(s.subjects || []).join(", "), s.grade, s.board].filter(Boolean).join(" · ")}</span>
                       </Link>
                     </li>
                   ))}
@@ -515,18 +605,20 @@ export function AdminUserDetail() {
       <Dialog
         open={assign}
         onClose={() => setAssign(false)}
-        title="Assign teacher"
-        subtitle={u.name}
-        size="sm"
+        title="Subjects & teachers"
+        subtitle={`${u.name} – one teacher per subject`}
+        size="lg"
         footer={
           <>
             <Button variant="outline" onClick={() => setAssign(false)}>Cancel</Button>
             <Button
               onClick={() =>
                 act(async () => {
-                  await api.post(`/admin/users/${u.id}/assign`, { teacherId });
+                  const clean = cleanRows(rows);
+                  if (new Set(clean.map((r) => r.subject.toLowerCase())).size !== clean.length) throw new Error("Each subject can only be listed once");
+                  await api.post(`/admin/users/${u.id}/assign`, { subjectTeachers: clean });
                   setAssign(false);
-                }, "Teacher updated – both have been notified")
+                }, "Teachers updated – new teachers and the student have been notified")
               }
             >
               Save
@@ -534,9 +626,7 @@ export function AdminUserDetail() {
           </>
         }
       >
-        <Field label="Teacher">
-          <Select value={teacherId} onChange={setTeacherId} options={(dir.data?.teachers || []).filter((t) => t.active).map((t) => ({ value: t.id, label: t.name, hint: t.subjects?.join(", ") }))} placeholder="No teacher" clearable />
-        </Field>
+        <SubjectTeachersEditor rows={rows} onChange={setRows} teachers={dir.data?.teachers || []} />
         <p className="mt-3 text-xs text-muted">Existing classes stay with their current teacher.</p>
       </Dialog>
     </>

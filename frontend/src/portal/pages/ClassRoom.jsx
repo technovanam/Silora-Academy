@@ -166,7 +166,7 @@ function PreviewButton({ on, icon: OnIcon, offIcon: OffIcon, label, disabled, on
 function PreJoin({ data, busy, onJoin, user }) {
   const navigate = useNavigate();
   const host = data.role === "host";
-  const student = user.role === "student";
+  const student = user.role === "student" || user.role === "guest";
   const [mic, setMic] = useState(null);
   const [cam, setCam] = useState(null);
   const [micOn, setMicOn] = useState(host);
@@ -308,7 +308,7 @@ function PreJoin({ data, busy, onJoin, user }) {
                 {host ? (data.live ? "Rejoin" : "Start class") : "Join now"}
               </PillButton>
               <button type="button" onClick={() => navigate(homeFor(user))} className="rounded-full px-4 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f6fafe]">
-                Back to the portal
+                {user.role === "guest" ? "Leave" : "Back to the portal"}
               </button>
             </div>
             <p className="mt-6 text-xs leading-relaxed text-[#5f6368]">
@@ -771,10 +771,10 @@ function Room({ data, user, isHost, media, onDone }) {
 
   const liveNow = room?.status === "live";
   useEffect(() => {
-    if (closingRef.current || !isHost || !canRecord() || !eng || !liveNow || recState.on || recState.busy || recRef.current || (recState.tries || 0) >= 3) return;
+    if (closingRef.current || !isHost || data.meeting.isDemo || !canRecord() || !eng || !liveNow || recState.on || recState.busy || recRef.current || (recState.tries || 0) >= 3) return;
     const t = setTimeout(beginRecording, recState.tries ? 5000 : 1000);
     return () => clearTimeout(t);
-  }, [isHost, eng, liveNow, recState.on, recState.busy, recState.tries, beginRecording]);
+  }, [isHost, eng, liveNow, recState.on, recState.busy, recState.tries, beginRecording, data.meeting.isDemo]);
 
   // Warn before closing the tab while recording
   useEffect(() => {
@@ -975,7 +975,7 @@ function Room({ data, user, isHost, media, onDone }) {
     return [
       { label: full2 && !speaking ? `Let speak (${MAX_SPEAKERS} already speaking)` : "Let speak", icon: Mic, hidden: p.canSpeak && speaking, onClick: () => act(() => eng.allowSpeak(p.id, true, false)) },
       { label: "Let speak with camera", icon: Video, hidden: p.canSpeak && p.canVideo && speaking, onClick: () => act(() => eng.allowSpeak(p.id, true, true)) },
-      { label: "Stop speaking", icon: MicOff, hidden: !p.canSpeak || p.role !== "student", onClick: () => act(() => eng.allowSpeak(p.id, false)) },
+      { label: "Stop speaking", icon: MicOff, hidden: !p.canSpeak || !["student", "guest"].includes(p.role), onClick: () => act(() => eng.allowSpeak(p.id, false)) },
       { label: "Lower hand", icon: Hand, hidden: !p.hand, onClick: () => act(() => eng.lowerHand(p.id)) },
       {
         label: "Remove from class",
@@ -1085,7 +1085,7 @@ function Room({ data, user, isHost, media, onDone }) {
         <div className="relative flex flex-1 items-center justify-center gap-2 sm:gap-3 md:flex-none">
           <CtrlButton icon={eng.micOn && canSpeak ? Mic : MicOff} tone={eng.micOn && canSpeak ? "default" : "off"} label={!canSpeak ? "Raise your hand to speak" : eng.micOn ? "Turn off microphone (Ctrl+D)" : "Turn on microphone (Ctrl+D)"} onClick={toggleMic} disabled={!canSpeak && isHost} />
           <CtrlButton icon={camOn ? Video : VideoOff} tone={camOn ? "default" : "off"} label={camOn ? "Turn off camera (Ctrl+E)" : isHost ? "Turn on camera (Ctrl+E)" : "Turn on camera – only the teacher sees it"} onClick={toggleCam} />
-          {!isHost && user.role === "student" && <CtrlButton icon={Hand} tone={me?.hand ? "on" : "default"} label={me?.hand ? "Lower hand" : "Raise hand"} onClick={() => act(() => eng.raiseHand(!me?.hand))} />}
+          {!isHost && ["student", "guest"].includes(user.role) && <CtrlButton icon={Hand} tone={me?.hand ? "on" : "default"} label={me?.hand ? "Lower hand" : "Raise hand"} onClick={() => act(() => eng.raiseHand(!me?.hand))} />}
           <div className="relative">
             <CtrlButton icon={Smile} tone={picker ? "on" : "default"} label="Send a reaction" onClick={() => setPicker((v) => !v)} />
             <ReactionPicker open={picker} onPick={react} onClose={() => setPicker(false)} />
