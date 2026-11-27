@@ -95,17 +95,18 @@ const TEAM = [
     imgClass: "",
   },
   {
+    name: "Anusha",
+    role: "Mathematics Faculty",
+    bio: "Makes Mathematics clear and approachable, building strong problem-solving skills and confidence in every student.",
+    img: "/Anusha.png",
+    // Full-length photo: zoom in towards her face
+    imgClass: "scale-[1.45] origin-[52%_14%]",
+  },
+  {
     name: "Aneesa Firdous",
     role: "Head of SST Faculty",
     bio: "Visionary historian weaving cultural narratives through immersive explorations, sparking critical thinking and lifelong appreciation.",
     img: "https://res.cloudinary.com/dnmvriw3e/image/upload/f_auto,q_auto,w_400/v1764439337/WhatsApp_Image_2025-11-29_at_09.58.43_e4cd9578_axbas2.jpg",
-    imgClass: "",
-  },
-  {
-    name: "Srujana",
-    role: "Mathematics Educator",
-    bio: "Makes Mathematics clear and approachable, building strong problem-solving skills and confidence in every student.",
-    img: "/Srujana.jpg",
     imgClass: "",
   },
   {
