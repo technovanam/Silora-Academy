@@ -367,7 +367,7 @@ export function StudentProgress() {
   return (
     <>
       <PageHeader title="Learning progress" subtitle="Lessons your teacher has planned and completed with you." />
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3">
         <StatCard icon={TrendingUp} label="Overall progress" value={`${summary.overall}%`} tone="blue" />
         <StatCard icon={CheckCircle2} label="Lessons completed" value={summary.completed} hint={`of ${summary.total}`} tone="green" />
         <StatCard icon={BookOpen} label="Subjects" value={summary.subjects.length} />

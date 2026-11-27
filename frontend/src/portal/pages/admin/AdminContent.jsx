@@ -1,6 +1,6 @@
 import React from "react";
 import { api } from "../../lib/api.js";
-import { Loading, PageHeader, useAsync } from "../../ui/index.jsx";
+import { ErrorBox, Loading, PageHeader, useAsync } from "../../ui/index.jsx";
 import { MaterialsManager } from "../../components/materials.jsx";
 
 // ---- Materials ---------------------------------------------------------------------
@@ -10,6 +10,7 @@ export function AdminMaterials() {
   return (
     <>
       <PageHeader title="Materials" subtitle="Every teacher's materials, with “opened” tracking for each student." />
+      <ErrorBox error={dir.error} onRetry={dir.reload} />
       {dir.loading ? <Loading /> : <MaterialsManager mode="admin" students={dir.data?.students || []} teachers={dir.data?.teachers || []} />}
     </>
   );

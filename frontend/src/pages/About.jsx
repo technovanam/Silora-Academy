@@ -102,11 +102,19 @@ const TEAM = [
     imgClass: "",
   },
   {
+    name: "Srujana",
+    role: "Mathematics Educator",
+    bio: "Makes Mathematics clear and approachable, building strong problem-solving skills and confidence in every student.",
+    img: "/Srujana.jpg",
+    imgClass: "",
+  },
+  {
     name: "Thaslima",
     role: "English Educator",
     bio: "Brings language and literature to life, helping students read, write and speak English with confidence.",
     img: "/Thaslima.jpeg",
-    imgClass: "",
+    // Full-length garden photo: zoom in towards her face
+    imgClass: "scale-[1.45] origin-[44%_12%]",
   },
 ];
 
@@ -278,7 +286,7 @@ const About = () => {
           title="Meet the people behind Silora"
           subtitle="Our dedicated team of educators and professionals is committed to providing the best learning experience for every student."
         />
-        <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-2 lg:mt-16 lg:grid-cols-3">
+        <div className="mx-auto mt-12 grid max-w-6xl grid-cols-1 gap-4 sm:grid-cols-2 lg:mt-16 lg:grid-cols-4">
           {TEAM.map((m, i) => (
             <Reveal key={m.name} delay={i * 80} className="group relative overflow-hidden rounded-[2rem] bg-slate-200">
               <div className="aspect-[3/4] overflow-hidden">

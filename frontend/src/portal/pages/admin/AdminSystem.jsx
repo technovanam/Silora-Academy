@@ -204,7 +204,7 @@ export function AdminSettings() {
             <Field label="Auto sign-out after inactivity (minutes)" hint="5 – 480">
               <Input min={5} max={480} {...num("sessionTimeoutMin")} />
             </Field>
-            <Field label="Lock account after failed attempts" hint="3 – 20">
+            <Field label="Lock sign-in after failed attempts" hint="3 – 20. Only the device with the wrong attempts is locked; the whole account locks after 3× this many from anywhere.">
               <Input min={3} max={20} {...num("maxFailedLogins")} />
             </Field>
             <Field label="Lock duration (minutes)">

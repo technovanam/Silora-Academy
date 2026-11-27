@@ -190,6 +190,49 @@ router.get(
   })
 );
 
+// Admin adds a request that came in another way (phone call, walk-in, WhatsApp…)
+router.post(
+  "/admin/demos",
+  ...dAdmin,
+  ah(async (req, res) => {
+    const b = req.body || {};
+    const d = {
+      name: str(b.name, 80),
+      email: str(b.email, 120).toLowerCase(),
+      phone: str(b.phone, 30),
+      grade: str(b.grade, 40),
+      board: str(b.board, 40),
+      city: str(b.city, 60),
+      state: str(b.state, 60),
+      country: str(b.country, 60),
+    };
+    if (!d.name) fail(400, "Enter the student's name");
+    if (!d.phone && !isEmail(d.email)) fail(400, "Enter a phone number or a valid email");
+    if (d.email && !isEmail(d.email)) fail(400, "Enter a valid email");
+    const at = nowIso();
+    const source = str(b.source, 40) || "added by the academy";
+    const r = await db.collection(C.demoRequests).add({ ...d, status: "new", source, notes: str(b.notes, 2000), createdAt: at, updatedAt: at, createdBy: req.user.id, history: [{ at, action: "added", by: req.user.id, byName: req.user.name }] });
+    await audit(req, "demo.create", { targetType: "demoRequest", targetId: r.id, summary: `Added a demo request for ${d.name} (${source})` });
+    res.status(201).json({ id: r.id });
+  })
+);
+
+// Delete a request (spam, duplicate…). A scheduled demo class is cancelled first.
+router.delete(
+  "/admin/demos/:id",
+  ...dAdmin,
+  ah(async (req, res) => {
+    const snap = await ref(req.params.id).get();
+    if (!snap.exists) fail(404, "Demo request not found");
+    const d = { id: snap.id, ...snap.data() };
+    if (d.status === "converted") fail(400, "This request became a student – it is kept for the record");
+    if (d.meetingId && d.status === "scheduled") await cancelMeeting(d, req.user.id);
+    await ref(d.id).delete();
+    await audit(req, "demo.delete", { targetType: "demoRequest", targetId: d.id, summary: `Deleted the demo request of ${d.name}` });
+    res.json({ ok: true });
+  })
+);
+
 router.get(
   "/admin/demos/:id",
   ...dAdmin,

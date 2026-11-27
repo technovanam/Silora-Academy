@@ -539,7 +539,7 @@ router.get(
     if (req.query.studentId) list = list.filter((l) => l.studentId === req.query.studentId);
     const users = await getMany(db, C.users, list.map((l) => l.teacherId));
     list.sort((a, b) => (a.status === "pending") !== (b.status === "pending") ? (a.status === "pending" ? -1 : 1) : a.createdAt < b.createdAt ? 1 : -1);
-    res.json({ requests: list.map((l) => ({ ...shapeLeave(l), studentId: l.studentId, studentName: l.studentName, teacherName: users[l.teacherId]?.name || "", decidedByName: l.decidedByName || null, late: l.createdAt > l.classStartAt })) });
+    res.json({ requests: list.map((l) => ({ ...shapeLeave(l), studentId: l.studentId, studentName: l.studentName, teacherName: users[l.teacherId]?.name || "", decidedByName: l.decidedByName || null, addedByAdmin: !!l.addedByAdmin, late: l.createdAt > l.classStartAt })) });
   })
 );
 
@@ -581,6 +581,47 @@ router.post(
       refId: req.params.id,
     });
     res.json({ ok: true });
+  })
+);
+
+// Admin records leave for a student (e.g. a parent phoned) – before or after the class
+router.post(
+  "/admin/leave-requests",
+  ...adminOnly,
+  ah(async (req, res) => {
+    const m = await loadMeetingDoc(str(req.body.meetingId, 60));
+    const studentId = str(req.body.studentId, 60);
+    if (!(m.studentIds || []).includes(studentId)) fail(400, "This student isn't in that class");
+    if (m.isDemo) fail(400, "Demo classes take no attendance");
+    if (m.status === "cancelled") fail(400, "This class was cancelled");
+    const reason = str(req.body.reason, 1000);
+    if (!reason) fail(400, "Add the reason for the leave");
+    const existing = listData(await db.collection(C.leaveRequests).where("studentId", "==", studentId).get()).find((l) => l.meetingId === m.id && ["pending", "approved"].includes(l.status));
+    if (existing) fail(409, existing.status === "approved" ? "Leave for this class is already approved" : "There's already a leave request for this class – decide it instead");
+    const student = (await db.collection(C.users).doc(studentId).get()).data() || {};
+    const approve = req.body.approve !== false;
+    const at = nowIso();
+    const status = approve ? "approved" : "pending";
+    const doc = {
+      studentId, studentName: student.name || "Student", teacherId: m.teacherId, meetingId: m.id, classTitle: m.title, subject: m.subject || "", classStartAt: m.startAt,
+      sessionId: (await sessionsForMeeting(m))[studentId]?.id || null, date: localDateOf(m.startAt), reason, remarks: str(req.body.remarks, 1000), status,
+      addedByAdmin: true, createdAt: at, updatedAt: at,
+      ...(approve ? { decisionNote: str(req.body.note, 1000), decidedAt: at, decidedBy: req.user.id, decidedByName: req.user.name } : {}),
+      history: [{ at, by: req.user.id, byName: req.user.name, action: approve ? "added_approved" : "added" }],
+    };
+    const ref = await db.collection(C.leaveRequests).add(doc);
+    // A form already submitted for that class shows the leave
+    if (approve) {
+      const fRef = formRef(m.id);
+      const f = (await fRef.get()).data();
+      if (f?.rows) {
+        const rows = f.rows.map((r) => (r.studentId === studentId && !r.overridden && r.status === "uninformed" ? { ...r, status: "leave", suggested: "leave", leave: { id: ref.id, status } } : r));
+        await fRef.update({ rows, updatedAt: at });
+      }
+    }
+    await audit(req, "leave.add", { targetType: "leaveRequest", targetId: ref.id, summary: `Added ${approve ? "approved " : ""}leave for ${doc.studentName} – "${m.title}" on ${doc.date}` });
+    await notify([studentId], { type: approve ? "leave_approved" : "leave_requested", title: approve ? "Leave recorded" : "Leave request added", body: `"${m.title}" on ${fmt(m.startAt)} – added by the academy`, link: "/portal/student/attendance?tab=leave", refId: ref.id });
+    res.status(201).json({ id: ref.id });
   })
 );
 

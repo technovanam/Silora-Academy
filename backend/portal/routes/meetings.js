@@ -11,6 +11,7 @@ import { ah, fail, nowIso, str, toIso, addMinutes, addDays, listData, getMany } 
 import { requireRole } from "../middleware.js";
 import { hasPerm, getUser, logActivity, audit, assignmentProblem, canonicalSubject, sameSubject } from "../services/core.js";
 import { notify, notifyAdmins } from "../services/notify.js";
+import { closeLeavesForMeeting } from "../services/lifecycle.js";
 import { recomputeForMeeting } from "../services/teacherPayments.js";
 
 const router = Router();
@@ -155,6 +156,7 @@ router.post(
     const teacherId = req.user.role === "teacher" ? req.user.id : str(req.body.teacherId, 60);
     const teacher = await getUser(teacherId);
     if (!teacher || teacher.role !== "teacher" || teacher.deletedAt) fail(400, "Choose a teacher");
+    if (teacher.active === false) fail(400, `${teacher.name}'s account is deactivated – choose another teacher or activate the account first`);
     // The subject comes from the academy's list; it decides which session the class counts towards
     const subject = await canonicalSubject(req.body.subject);
     const studentIds = await validateStudents(teacherId, req.body.studentIds, subject);
@@ -230,6 +232,9 @@ router.patch(
     if ((update.studentIds || teacherId !== m.teacherId) && !(req.user.role === "admin" && (req.body.startAt || req.body.durationMin)))
       await assertNoClash(teacherId, m.startAt, m.endAt, m.id, (update.studentIds || []).filter((x) => !(m.studentIds || []).includes(x)));
     if (teacherId !== m.teacherId) {
+      const nt = await getUser(teacherId);
+      if (!nt || nt.role !== "teacher" || nt.deletedAt) fail(400, "Choose a teacher");
+      if (nt.active === false) fail(400, `${nt.name}'s account is deactivated – choose another teacher`);
       update.teacherId = teacherId;
       if (!req.body.studentIds) await validateStudents(teacherId, m.studentIds, subject);
     } else if (!req.body.studentIds && "subject" in update && update.subject !== (m.subject || "")) await validateStudents(teacherId, m.studentIds, subject);
@@ -272,6 +277,7 @@ router.patch(
 
 async function cancelMeeting(req, m, reason) {
   await db.collection(C.meetings).doc(m.id).update({ status: "cancelled", cancelledReason: reason || "", cancelledAt: nowIso(), cancelledBy: req.user.id, pendingRequest: null });
+  await closeLeavesForMeeting(m.id);
   await recomputeForMeeting(m);
   await notify([...(m.studentIds || []), m.teacherId], {
     type: "class_cancelled",
@@ -306,6 +312,7 @@ router.delete(
     const snap = await db.collection(C.meetings).doc(req.params.id).get();
     if (!snap.exists) fail(404, "Class not found");
     await snap.ref.delete();
+    await closeLeavesForMeeting(snap.id, "The class was deleted");
     await audit(req, "class.delete", { targetType: "meeting", targetId: snap.id, summary: `Deleted class "${snap.data().title}"` });
     res.json({ ok: true });
   })
@@ -371,6 +378,21 @@ router.post(
     );
     await logActivity(req, "class.request", { targetType: "meeting", targetId: m.id, summary: `Requested to ${type} "${m.title}"` });
     res.status(201).json({ id: ref.id });
+  })
+);
+
+router.post(
+  "/schedule-requests/:id/withdraw",
+  requireRole("teacher"),
+  ah(async (req, res) => {
+    const rref = db.collection(C.scheduleRequests).doc(req.params.id);
+    const r = (await rref.get()).data();
+    if (!r || r.teacherId !== req.user.id) fail(404, "Request not found");
+    if (r.status !== "pending") fail(400, "This request was already decided");
+    await rref.update({ status: "withdrawn", decidedAt: nowIso() });
+    await db.collection(C.meetings).doc(r.meetingId).update({ pendingRequest: null }).catch(() => {});
+    await logActivity(req, "class.request_withdrawn", { targetType: "meeting", targetId: r.meetingId, summary: `Withdrew a ${r.type} request` });
+    res.json({ ok: true });
   })
 );
 

@@ -35,7 +35,7 @@ function summarize(rows) {
 
 function SummaryCards({ s, leaveCounts }) {
   return (
-    <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
       <StatCard icon={ClipboardCheck} label="Classes conducted" value={s.conducted} tone="navy" />
       <StatCard icon={CheckCircle2} label="Attended" value={s.attended} hint={s.percent === null ? "" : `${s.percent}% · ${s.late} late`} tone="green" />
       <StatCard icon={XCircle} label="Absent" value={s.absent} tone="red" />
@@ -554,6 +554,7 @@ export function TeacherAttendance() {
             <Select className="w-full sm:w-56" value={student} onChange={setStudent} options={students} placeholder="All students" clearable searchable />
             {(records.data?.subjects || []).length > 1 && <Select className="w-full sm:w-48" value={subject} onChange={setSubject} options={records.data.subjects.map((s) => ({ value: s, label: s }))} placeholder="All subjects" clearable />}
           </div>
+          <ErrorBox error={records.error} onRetry={records.reload} />
           {records.loading ? <Loading /> : records.data && (
             <>
               <SummaryCards s={records.data.summary} />
@@ -739,8 +740,75 @@ function PendingForms({ state, onOpen }) {
   );
 }
 
+/** Admin adds leave for a student (parent phoned in) – for an upcoming class or one in the last weeks. */
+function AddLeaveDialog({ open, onClose, onSaved }) {
+  const ui = useUi();
+  const dir = useAsync(() => (open ? api.get("/admin/directory") : Promise.resolve(null)), [open]);
+  const [studentId, setStudentId] = useState(null);
+  const [meetingId, setMeetingId] = useState(null);
+  const [reason, setReason] = useState("");
+  const [approve, setApprove] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const from = useMemo(() => new Date(Date.now() - 21 * 86400000).toISOString(), [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const to = useMemo(() => new Date(Date.now() + 45 * 86400000).toISOString(), [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const classes = useAsync(() => (studentId ? api.get("/meetings", { studentId, from, to }) : Promise.resolve(null)), [studentId]);
+  const options = (classes.data?.meetings || []).filter((m) => !m.isDemo && m.status !== "cancelled").map((m) => ({ value: m.id, label: `${fmtDateTime(m.startAt)} · ${m.subject || m.title} · ${m.teacherName}` }));
+  const reset = () => {
+    setStudentId(null);
+    setMeetingId(null);
+    setReason("");
+    setApprove(true);
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.post("/admin/leave-requests", { studentId, meetingId, reason, approve });
+      ui.toast(approve ? "Leave recorded – the student was notified" : "Leave request added");
+      reset();
+      onSaved();
+      onClose();
+    } catch (e) {
+      ui.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open={open}
+      onClose={() => { reset(); onClose(); }}
+      title="Add leave for a student"
+      subtitle="For example when a parent phones the academy. Works for upcoming classes and classes in the last 3 weeks."
+      footer={
+        <>
+          <Button variant="outline" onClick={() => { reset(); onClose(); }}>Cancel</Button>
+          <Button icon={Plus} onClick={save} loading={busy} disabled={!studentId || !meetingId || !reason.trim()}>{approve ? "Add approved leave" : "Add request"}</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Student" required>
+          <Select value={studentId} onChange={(v) => { setStudentId(v); setMeetingId(null); }} options={(dir.data?.students || []).filter((s) => s.active).map((s) => ({ value: s.id, label: `${s.name}${s.studentCode ? ` · ${s.studentCode}` : ""}` }))} placeholder={dir.loading ? "Loading…" : "Choose a student"} searchable />
+        </Field>
+        <Field label="Class" required hint={studentId && !classes.loading && !options.length ? "No classes for this student in that period" : undefined}>
+          <Select value={meetingId} onChange={setMeetingId} options={options} placeholder={!studentId ? "Choose the student first" : classes.loading ? "Loading classes…" : "Choose the class"} disabled={!studentId} searchable />
+        </Field>
+        <Field label="Reason" required>
+          <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} placeholder="e.g. Mother called – Aarav has a fever" />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={approve} onChange={(e) => setApprove(e.target.checked)} className="h-4 w-4 rounded border-line" />
+          Approve straight away (the attendance form shows “Leave” for this class)
+        </label>
+        <ErrorBox error={dir.error || classes.error} />
+      </div>
+    </Dialog>
+  );
+}
+
 function AdminLeave({ state }) {
   const ui = useUi();
+  const [adding, setAdding] = useState(false);
   const [status, setStatus] = useState("pending");
   const [q, setQ] = useState("");
   const [deciding, setDeciding] = useState(null);
@@ -771,7 +839,9 @@ function AdminLeave({ state }) {
         <Segmented value={status} onChange={setStatus} options={[{ value: "pending", label: "Waiting", count: count("pending") }, { value: "approved", label: "Approved", count: count("approved") }, { value: "rejected", label: "Rejected", count: count("rejected") }, { value: "all", label: "All" }]} />
         <div className="flex-1" />
         <SearchInput value={q} onChange={setQ} className="w-full sm:w-64" placeholder="Search student or subject…" />
+        <Button icon={Plus} onClick={() => setAdding(true)}>Add leave</Button>
       </div>
+      <AddLeaveDialog open={adding} onClose={() => setAdding(false)} onSaved={() => state.reload(true)} />
       <Card flush>
         <Table
           pageSize={25}
@@ -781,7 +851,7 @@ function AdminLeave({ state }) {
             { key: "studentName", label: "Student", render: (l) => <span className="font-semibold text-navy">{l.studentName}</span> },
             { key: "class", label: "Class", render: (l) => <span>{l.subject || l.classTitle}<span className="block text-xs text-muted">{fmtDateTime(l.classStartAt)} · {l.teacherName}</span></span> },
             { key: "reason", label: "Reason", className: "max-w-[260px]", render: (l) => <span className="text-sm">{l.reason}{l.remarks && <span className="block text-xs text-muted">{l.remarks}</span>}</span> },
-            { key: "createdAt", label: "Requested", render: (l) => <span className="whitespace-nowrap text-sm">{fromNow(l.createdAt)}</span> },
+            { key: "createdAt", label: "Requested", render: (l) => <span className="whitespace-nowrap text-sm">{fromNow(l.createdAt)}{l.addedByAdmin && <span className="block text-[11px] text-muted">added by the academy</span>}</span> },
             { key: "status", label: "Status", render: (l) => <span className="flex flex-col items-start gap-0.5"><Badge tone={LEAVE_STATUS[l.status]?.[0]}>{LEAVE_STATUS[l.status]?.[1]}</Badge>{l.decidedByName && <span className="text-[11px] text-muted">by {l.decidedByName}</span>}</span> },
             {
               key: "actions",

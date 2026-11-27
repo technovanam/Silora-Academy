@@ -50,6 +50,8 @@ function TeacherStack({ teachers, count }) {
 }
 
 export function AdminSubjects() {
+  const { user: me } = useAuth();
+  const canEdit = can(me, "settings") || can(me, "users"); // "sessions" alone = view only
   const ui = useUi();
   const { data, loading, error, reload } = useAsync(() => api.get("/admin/subjects"), []);
   const [q, setQ] = useState("");
@@ -105,9 +107,9 @@ export function AdminSubjects() {
       trigger={<IconButton icon={MoreHorizontal} label={`Actions for ${s.name}`} />}
       items={[
         { label: "View details", icon: Eye, onClick: () => setView(s.name) },
-        { label: "Edit", icon: Pencil, onClick: () => setForm({ subject: s }) },
-        { label: "Archive", icon: Archive, danger: true, onClick: () => archive(s), hidden: !s.active },
-        { label: "Restore", icon: ArchiveRestore, onClick: () => restore(s), hidden: s.active },
+        { label: "Edit", icon: Pencil, onClick: () => setForm({ subject: s }), hidden: !canEdit },
+        { label: "Archive", icon: Archive, danger: true, onClick: () => archive(s), hidden: !canEdit || !s.active },
+        { label: "Restore", icon: ArchiveRestore, onClick: () => restore(s), hidden: !canEdit || s.active },
       ]}
     />
   );
@@ -118,7 +120,7 @@ export function AdminSubjects() {
   const empty = subjects.length ? (
     <Empty icon={BookOpen} title="No subjects match" text="Try another search or filter." action={<Button variant="outline" size="sm" onClick={() => { setQ(""); setStatus("all"); setUsage(""); }}>Clear filters</Button>} />
   ) : (
-    <Empty icon={BookOpen} title="No subjects yet" text="Add the subjects the academy teaches. Until then, subject fields accept anything." action={<Button icon={Plus} onClick={() => setForm({})}>Add subject</Button>} />
+    <Empty icon={BookOpen} title="No subjects yet" text="Add the subjects the academy teaches. Until then, subject fields accept anything." action={canEdit && <Button icon={Plus} onClick={() => setForm({})}>Add subject</Button>} />
   );
 
   return (
@@ -126,10 +128,10 @@ export function AdminSubjects() {
       <PageHeader
         title="Subjects"
         subtitle="The subjects the academy teaches. Every subject field in the portal – students, teachers, sessions, classes, timetable and materials – is a dropdown from this list."
-        actions={<Button icon={Plus} onClick={() => setForm({})}>Add Subject</Button>}
+        actions={canEdit && <Button icon={Plus} onClick={() => setForm({})}>Add Subject</Button>}
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3">
         <StatCard icon={Layers} tone="navy" label="Total subjects" value={counts.all} hint="Everything in the list" onClick={() => setStatus("all")} />
         <StatCard icon={BookOpenCheck} tone="green" label="Active subjects" value={counts.active} hint="Shown in the dropdowns" onClick={() => setStatus("active")} />
         <StatCard icon={Archive} tone="gold" label="Archived subjects" value={counts.archived} hint="Hidden, history kept" onClick={() => setStatus("archived")} />
@@ -305,6 +307,7 @@ function SubjectForm({ subject, subjects, suggestions, onClose, onSaved }) {
 function SubjectDetails({ name, onClose, onEdit, onArchive }) {
   const { user } = useAuth();
   const canUsers = can(user, "users");
+  const canEdit = canUsers || can(user, "settings");
   const { data, loading, error, reload } = useAsync(() => api.get(`/admin/subjects/${enc(name)}`), [name]);
   const [tab, setTab] = useState("teachers");
   const [q, setQ] = useState("");
@@ -333,7 +336,7 @@ function SubjectDetails({ name, onClose, onEdit, onArchive }) {
       title={s ? s.name : name}
       subtitle={s?.description || "Subject details"}
       footer={
-        s && (
+        s && canEdit && (
           <>
             <Button variant={s.active ? "danger-outline" : "outline"} icon={s.active ? Archive : ArchiveRestore} onClick={() => onArchive(s)}>{s.active ? "Archive" : "Restore"}</Button>
             <Button icon={Pencil} onClick={() => onEdit(s)}>Edit subject</Button>

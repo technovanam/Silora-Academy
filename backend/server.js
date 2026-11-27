@@ -41,14 +41,59 @@ const app = express();
 // MIDDLEWARE CONFIGURATION
 // ============================================================================
 
-// Enable CORS (Cross-Origin Resource Sharing) to allow frontend requests
+// Enable CORS (Cross-Origin Resource Sharing) to allow frontend requests.
+// The portal API authenticates with a bearer token (no cookies), so other sites can't
+// act as a signed-in user even though any origin may call it.
 app.use(cors());
+
+// Basic security headers (no framing rule: the portal shows material files in a viewer)
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 
 // Parse incoming JSON request bodies
 app.use(express.json());
 
-// Configure Multer for file uploads (stores files temporarily in 'uploads/' folder)
-const upload = multer({ dest: "uploads/" });
+// Configure Multer for file uploads (stores files temporarily in 'uploads/' folder).
+// Public form: resumes only (PDF / Word), at most 5 MB, one file.
+const RESUME_TYPES = /\.(pdf|doc|docx)$/i;
+const upload = multer({
+  dest: "uploads/",
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 30, fieldSize: 10000 },
+  fileFilter: (req, file, cb) => (RESUME_TYPES.test(file.originalname || "") ? cb(null, true) : cb(Object.assign(new Error("Please upload your resume as a PDF or Word file"), { status: 400 }))),
+});
+// Runs a multer middleware and answers 400 (not a crash page) when the upload is refused
+const safeUpload = (mw) => (req, res, next) =>
+  mw(req, res, (err) => {
+    if (!err) return next();
+    const message = err.code === "LIMIT_FILE_SIZE" ? "The resume is too large (max 5 MB)" : err.status === 400 ? err.message : "The form could not be read";
+    res.status(400).json({ success: false, message });
+  });
+
+// ---- Public website forms: escape what visitors type before it goes into an email,
+// cap the length, and limit how often one address can send (stops the forms being
+// used to send spam from the academy's mailbox).
+const escHtml = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const safeFields = (body = {}, max = 300) =>
+  Object.fromEntries(Object.entries(body).map(([k, v]) => [k, escHtml(String(v ?? "").trim().slice(0, k === "message" ? 3000 : max)).replace(/\r?\n/g, k === "message" ? "<br>" : " ")]));
+const isEmailAddr = (v) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/.test(String(v || "").trim());
+const formHits = new Map(); // "form|ip" → times (last hour)
+function formLimit(name, perHour) {
+  return (req, res, next) => {
+    const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket?.remoteAddress || "";
+    const key = `${name}|${ip}`;
+    const now = Date.now();
+    const times = (formHits.get(key) || []).filter((t) => now - t < 3600000);
+    if (formHits.size > 10000) formHits.clear();
+    if (times.length >= perHour) return res.status(429).json({ success: false, message: "Too many submissions. Please try again in an hour, or email us directly." });
+    formHits.set(key, [...times, now]);
+    next();
+  };
+}
 
 // ============================================================================
 // EMAIL CONFIGURATION
@@ -134,10 +179,12 @@ app.get("/", (req, res) => {
  *   2. Sends notification email to admin with contact details
  *   3. Sends auto-reply confirmation to user
  */
-app.post("/api/contact", upload.none(), async (req, res) => {
+app.post("/api/contact", formLimit("contact", 5), safeUpload(upload.none()), async (req, res) => {
   try {
     // Extract form data from request body
-    const { user_name, user_email, user_phone, message } = req.body;
+    if (req.body?.website) return res.status(200).json({ success: true, message: "Message received successfully" }); // bots fill the hidden field
+    if (!String(req.body?.user_name || "").trim() || !isEmailAddr(req.body?.user_email)) return res.status(400).json({ success: false, message: "Please enter your name and a valid email address" });
+    const { user_name, user_email, user_phone, message } = safeFields(req.body);
 
 
     // ========================================================================
@@ -183,19 +230,19 @@ app.post("/api/contact", upload.none(), async (req, res) => {
     // Send emails asynchronously (fire-and-forget pattern)
     // Errors are logged but don't affect the user's response
 
-    // Send notification to admin (not again when the same person asked this week)
-    if (!saved.duplicate) await sendSiteEmail({
+    // Send notification to admin
+    await sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Contact Form Submission from ${user_name}`,
       html: adminMessageHtml,
-      reply_to: user_email  // Admin can reply directly to user
+      reply_to: String(req.body.user_email).trim()  // Admin can reply directly to user
     }).catch(err => console.error("Admin email error:", err));
 
     // Send confirmation to user
     await sendSiteEmail({
       from: DEFAULT_FROM,
-      to: user_email,
+      to: String(req.body.user_email).trim(),
       subject: `We've Received Your Message - Silora Academy`,
       html: autoReplyHtml
     }).catch(err => console.error("Auto-reply error:", err));
@@ -232,10 +279,10 @@ app.post("/api/contact", upload.none(), async (req, res) => {
  *   2. Sends notification email to admin with booking details
  *   3. Sends confirmation email to user with submitted details
  */
-app.post("/api/student-demo", upload.none(), async (req, res) => {
+app.post("/api/student-demo", formLimit("demo", 8), safeUpload(upload.none()), async (req, res) => {
   try {
     // Extract form data from request body
-    const { name, email, mobile, class_grade, board, city, state, country } = req.body;
+    const { name, email, mobile, class_grade, board, city, state, country } = safeFields(req.body);
 
     // Save it in the portal (Admin → Demo requests). Bots that fill the hidden
     // field, and too many requests from one address, get "received" but no emails.
@@ -247,6 +294,7 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
       console.error("Demo request not saved:", e.message);
     }
     if (saved.spam || saved.limited) return res.status(200).json({ success: true, message: "Demo request received successfully" });
+    if (saved.invalid) return res.status(400).json({ success: false, message: "Please enter your name and an email address or phone number" });
 
 
     // ========================================================================
@@ -305,19 +353,19 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
 
     // Send emails asynchronously (fire-and-forget pattern)
 
-    // Send notification to admin
-    await sendSiteEmail({
+    // Send notification to admin (not again when the same person asked this week)
+    if (!saved.duplicate) await sendSiteEmail({
       from: DEFAULT_FROM,
       to: ADMIN_EMAIL,
       subject: `New Student Demo Booking - ${name}`,
       html: adminHtml,
-      reply_to: email  // Admin can reply directly to student/parent
+      reply_to: isEmailAddr(req.body?.email) ? String(req.body.email).trim() : undefined, // Admin can reply directly to student/parent
     }).catch(err => console.error("Student demo email error:", err));
 
-    // Send confirmation to user
-    await sendSiteEmail({
+    // Send confirmation to user (only to a real email address)
+    if (isEmailAddr(req.body?.email)) await sendSiteEmail({
       from: DEFAULT_FROM,
-      to: email,
+      to: String(req.body.email).trim(),
       subject: `Your Demo Session Request Is Confirmed - Silora Academy`,
       html: userConfirmationHtml
     }).catch(err => console.error("Student auto-reply error:", err));
@@ -357,10 +405,14 @@ app.post("/api/student-demo", upload.none(), async (req, res) => {
  *   5. Sends confirmation email to applicant
  *   6. Deletes temporary uploaded file from server
  */
-app.post("/api/tutor-application", upload.single("resume"), async (req, res) => {
+app.post("/api/tutor-application", formLimit("tutor", 3), safeUpload(upload.single("resume")), async (req, res) => {
   try {
     // Extract form data from request body
-    const { tutor_name, tutor_email, tutor_phone, city, state, country, expertise, experience } = req.body;
+    if (!String(req.body?.tutor_name || "").trim() || !isEmailAddr(req.body?.tutor_email)) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ success: false, message: "Please enter your name and a valid email address" });
+    }
+    const { tutor_name, tutor_email, tutor_phone, city, state, country, expertise, experience } = safeFields(req.body);
 
     // Get uploaded file (if any) from Multer
     const file = req.file;
@@ -402,7 +454,7 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
       <p><strong>Country:</strong> ${country}</p>
       <p><strong>Expertise:</strong> ${expertise}</p>
       <p><strong>Experience:</strong> ${experience} years</p>
-      <p><strong>Resume:</strong> ${file ? file.originalname : 'No resume attached'}</p>
+      <p><strong>Resume:</strong> ${file ? escHtml(file.originalname) : 'No resume attached'}</p>
     `;
 
     // ========================================================================
@@ -468,7 +520,7 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
       to: ADMIN_EMAIL,
       subject: `New Tutor Application - ${tutor_name}`,
       html: adminHtml,
-      reply_to: tutor_email,  // Admin can reply directly to applicant
+      reply_to: String(req.body.tutor_email).trim(),  // Admin can reply directly to applicant
       attachments: attachmentsForEmail
     }).catch(err => console.error("Admin tutor email error:", err))
       .finally(() => {
@@ -485,7 +537,7 @@ app.post("/api/tutor-application", upload.single("resume"), async (req, res) => 
     // Send confirmation to applicant (no attachment needed)
     await sendSiteEmail({
       from: DEFAULT_FROM,
-      to: tutor_email,
+      to: String(req.body.tutor_email).trim(),
       subject: `Application Received - Silora Academy Teaching Opportunity`,
       html: applicantConfirmationHtml
     }).catch(err => console.error("Tutor auto-reply error:", err));

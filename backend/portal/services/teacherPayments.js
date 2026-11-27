@@ -26,7 +26,15 @@ export async function recomputeSession(sessionId) {
   const sSnap = await db.collection(C.sessions).doc(sessionId).get();
   if (!sSnap.exists) return;
   const s = { id: sSnap.id, ...sSnap.data() };
-  if (s.status === "draft" || !s.studentId) return;
+  if (!s.studentId) return;
+  if (s.status === "draft" || s.status === "archived") {
+    // An archived session (or one put back to draft) no longer owes anything: close its unpaid records
+    const at = new Date().toISOString();
+    for (const p of listData(await db.collection(C.teacherPayments).where("sessionId", "==", s.id).get())) {
+      if (!p.removed && p.status !== "paid") await db.collection(C.teacherPayments).doc(p.id).update({ removed: true, updatedAt: at, history: [...(p.history || []), { at, action: s.status === "archived" ? "session_archived" : "session_draft" }] });
+    }
+    return;
+  }
   const meetings = await meetingsOfSession(s);
   const existing = Object.fromEntries(listData(await db.collection(C.teacherPayments).where("sessionId", "==", s.id).get()).map((p) => [p.teacherId, p]));
   const teacherIds = [...new Set((s.subjects || []).map((x) => x.teacherId))];

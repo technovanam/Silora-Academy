@@ -12,14 +12,15 @@
 //
 // A session is one subject of one student, so fees are PER SUBJECT: once the
 // Mathematics proof is submitted, Mathematics is never asked again.
-// Access: while an ACTIVE session's proof isn't submitted (or was rejected),
-// only THAT SUBJECT is locked by the backend (feeGate): its classes, timetable,
-// attendance, and – per the admin's settings – materials, recordings, progress.
-// Other subjects keep working. Login, profile, messages, notifications and the
-// fees page always work. The admin verifies the proof separately.
+// Access: while an ACTIVE session that has STARTED has no proof (or it was
+// rejected), only THAT SUBJECT is locked by the backend (feeGate): its upcoming
+// classes, timetable, and – per the admin's settings – materials, recordings,
+// progress. A session that starts later doesn't lock anything yet. Past classes,
+// attendance history and leave requests always stay open, as do other subjects,
+// login, profile, messages, notifications and the fees page.
 // ============================================================================
 import { db, C } from "../firebase.js";
-import { listData, nowIso } from "../util.js";
+import { listData, nowIso, localDateOf } from "../util.js";
 import { getSettings, sameSubject } from "./core.js";
 import { notify } from "./notify.js";
 
@@ -42,7 +43,9 @@ export const clearFeeCache = (studentId) => (studentId ? cache.delete(studentId)
 export async function feeState(studentId) {
   const hit = cache.get(studentId);
   if (hit && Date.now() - hit.at < TTL) return hit.value;
-  const sessions = listData(await db.collection(C.sessions).where("studentIds", "array-contains", studentId).get()).filter((s) => s.status === "active");
+  const today = localDateOf(nowIso());
+  // Only sessions already running can lock (one starting next month doesn't hide today's classes)
+  const sessions = listData(await db.collection(C.sessions).where("studentIds", "array-contains", studentId).get()).filter((s) => s.status === "active" && (!s.startDate || s.startDate <= today));
   const pays = sessions.length ? await db.getAll(...sessions.map((s) => db.collection(C.feePayments).doc(payId(s.id, studentId)))) : [];
   const byId = Object.fromEntries(pays.filter((p) => p.exists).map((p) => [p.data().sessionId, p.data()]));
   const blocking = sessions
@@ -70,13 +73,15 @@ function featureOf(method, path) {
   if (/^\/meetings\/[^/]+\/live\/(leave|ping)$/.test(path)) return null; // let them leave a class cleanly
   if (path.startsWith("/meetings")) return "classes";
   if (path.startsWith("/timetable")) return "timetable";
-  if (path.startsWith("/attendance") || path.startsWith("/leave-requests")) return "attendance";
+  // Attendance history and leave requests are never locked
   if (path.startsWith("/materials")) return "materials";
   if (path.startsWith("/recordings")) return "recordings";
-  if (path.startsWith("/lessons") || path.startsWith("/notes")) return "progress";
+  if (path.startsWith("/lessons")) return "progress";
   return null;
 }
-const ALWAYS = new Set(["classes", "timetable", "attendance"]);
+const ALWAYS = new Set(["classes", "timetable"]);
+// A class that has finished stays visible (its details, attendance) even when its subject is locked
+const finished = (x) => !!x?.endAt && x.endAt <= nowIso();
 
 // Is this subject locked for the student?
 export const isLocked = (st, subject) => !!st?.restricted && (st.all || (!!subject && st.subjects.some((x) => sameSubject(x, subject))));
@@ -108,7 +113,7 @@ export async function feeGate(req, res, next) {
     if (one && ITEM[one[1]]) {
       const snap = await db.collection(ITEM[one[1]]).doc(one[2]).get();
       const subject = snap.exists ? snap.data().subject || "" : "";
-      if (isLocked(st, subject)) return res.status(403).json(lockedError(st, subject));
+      if (isLocked(st, subject) && !(one[1] === "meetings" && finished(snap.data()))) return res.status(403).json(lockedError(st, subject));
       return next();
     }
     if (st.all) return res.status(403).json(lockedError(st, ""));
@@ -117,7 +122,7 @@ export async function feeGate(req, res, next) {
     res.json = (body) => {
       if (body && typeof body === "object" && res.statusCode < 400) {
         for (const [k, v] of Object.entries(body)) {
-          if (Array.isArray(v)) body[k] = v.filter((x) => !(x && typeof x === "object" && isLocked(st, x.subject)));
+          if (Array.isArray(v)) body[k] = v.filter((x) => !(x && typeof x === "object" && isLocked(st, x.subject) && !(feature === "classes" && finished(x))));
         }
         body.feeLockedSubjects = st.subjects;
       }

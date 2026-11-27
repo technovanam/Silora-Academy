@@ -15,7 +15,7 @@ import { ah, fail, nowIso, str, listData, getMany, toCsv, localDateOf } from "..
 import { requireRole, requirePerm } from "../middleware.js";
 import { audit } from "../services/core.js";
 import { storeUpload, fileLink, MATERIAL_TYPES } from "../services/files.js";
-import { recomputeAll, notifyTeacherPaid } from "../services/teacherPayments.js";
+import { recomputeAll, notifyTeacherPaid, recomputeSession } from "../services/teacherPayments.js";
 
 const router = Router();
 const PROOF_TYPES = Object.fromEntries(["pdf", "png", "jpg", "jpeg", "webp", "gif"].map((k) => [k, MATERIAL_TYPES[k]]));
@@ -181,6 +181,26 @@ router.post(
     await ref.update({ ...update, history: [...(p.history || []), { at, by: req.user.id, byName: req.user.name, action: "corrected", reason, before }].slice(-100) });
     await audit(req, "teacher_payment.correct", { targetType: "teacherPayment", targetId: req.params.id, summary: `Corrected ${p.teacherName}'s payment record for "${p.sessionName}"`, meta: { reason, before, after: { amount: update.amount, paidOn: update.paidOn, reference: update.reference, proof: update.proof?.fileName } } });
     res.json({ ok: true });
+  })
+);
+
+router.post(
+  "/admin/teacher-payments/:id/unpay",
+  ...tpAdmin,
+  ah(async (req, res) => {
+    const ref = db.collection(C.teacherPayments).doc(req.params.id);
+    const p = (await ref.get()).data();
+    if (!p) fail(404, "Payment record not found");
+    if (p.status !== "paid") fail(400, "Only a paid record can be undone");
+    const reason = str(req.body.reason, 500);
+    if (!reason) fail(400, "Add a reason for undoing the payment");
+    const at = nowIso();
+    const status = p.scheduledClasses && p.conductedClasses >= p.scheduledClasses ? "due" : "pending";
+    const before = { amount: p.amount, paidOn: p.paidOn, reference: p.reference, proof: p.proof?.fileName, paidByName: p.paidByName };
+    await ref.update({ status, amount: null, paidOn: null, reference: "", note: "", proof: null, paidAt: null, paidBy: null, paidByName: null, paidEarly: false, updatedAt: at, history: [...(p.history || []), { at, by: req.user.id, byName: req.user.name, action: "unpaid", reason, before }].slice(-100) });
+    await audit(req, "teacher_payment.unpay", { targetType: "teacherPayment", targetId: req.params.id, summary: `Undid the payment to ${p.teacherName} for "${p.sessionName}"`, meta: { reason, before } });
+    await recomputeSession(p.sessionId).catch(() => {});
+    res.json({ ok: true, status });
   })
 );
 

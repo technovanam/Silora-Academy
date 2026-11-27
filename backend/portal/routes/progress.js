@@ -132,57 +132,6 @@ router.delete(
   })
 );
 
-// ---- Private notes (teacher only, never shown to students or other teachers) ----------
-router.get(
-  "/notes",
-  requireRole("teacher"),
-  ah(async (req, res) => {
-    let list = listData(await db.collection(C.notes).where("teacherId", "==", req.user.id).get());
-    if (req.query.studentId) list = list.filter((n) => n.studentId === req.query.studentId);
-    list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    res.json({ notes: list.map(({ id, studentId, text, pinned, createdAt, updatedAt }) => ({ id, studentId, text, pinned: !!pinned, createdAt, updatedAt })) });
-  })
-);
-
-router.post(
-  "/notes",
-  requireRole("teacher"),
-  ah(async (req, res) => {
-    const s = await ownStudent(req.user, str(req.body.studentId, 60));
-    const text = str(req.body.text, 3000);
-    if (!text) fail(400, "Write a note");
-    const ref = await db.collection(C.notes).add({ teacherId: req.user.id, studentId: s.id, text, pinned: !!req.body.pinned, createdAt: nowIso() });
-    res.status(201).json({ id: ref.id });
-  })
-);
-
-router.patch(
-  "/notes/:id",
-  requireRole("teacher"),
-  ah(async (req, res) => {
-    const ref = db.collection(C.notes).doc(req.params.id);
-    const snap = await ref.get();
-    if (!snap.exists || snap.data().teacherId !== req.user.id) fail(404, "Note not found");
-    const update = { updatedAt: nowIso() };
-    if ("text" in req.body) update.text = str(req.body.text, 3000) || snap.data().text;
-    if ("pinned" in req.body) update.pinned = !!req.body.pinned;
-    await ref.update(update);
-    res.json({ ok: true });
-  })
-);
-
-router.delete(
-  "/notes/:id",
-  requireRole("teacher"),
-  ah(async (req, res) => {
-    const ref = db.collection(C.notes).doc(req.params.id);
-    const snap = await ref.get();
-    if (!snap.exists || snap.data().teacherId !== req.user.id) fail(404, "Note not found");
-    await ref.delete();
-    res.json({ ok: true });
-  })
-);
-
 // ---- Teacher: my students (no contact details – Mandatory rule 2) ---------------------
 router.get(
   "/my-students",

@@ -83,7 +83,7 @@ export function StudentRecordings() {
       <PageHeader title="Recordings" subtitle={`Recordings of your classes. Watch them again, download them, or delete the ones you don't need. Recordings are kept for ${plural(data?.retentionDays ?? 30, "day")} after the class.`} />
       <ErrorBox error={error} onRetry={reload} />
       {data && (
-        <div className="mb-4 grid gap-4 sm:grid-cols-3">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3">
           <StatCard icon={Video} label="Recordings" value={ready.length} tone="violet" />
           <StatCard icon={Clock} label="Total length" value={dur(ready.reduce((n, r) => n + (r.durationSec || 0), 0))} tone="gold" />
           <Card>

@@ -9,6 +9,8 @@ import { getSettings, hasPerm } from "./services/core.js";
 const ACTIVITY_WRITE_EVERY_MS = 60 * 1000;
 export const STUDENT_SESSION_DAYS = 30;
 const STUDENT_SESSION_MS = STUDENT_SESSION_DAYS * 24 * 60 * 60 * 1000;
+// What someone with a temporary password may still do: the profile page and sign out
+const PASSWORD_CHANGE_ALLOWED = [/^\/me(\/(password|activity|push-token))?$/, /^\/auth\/logout(-all)?$/, /^\/notifications(\/read-all|\/[^/]+\/read)?$/, /^\/(messages|admin\/dm)\/unread$/, /^\/subjects$/];
 
 export async function authenticate(req, res, next) {
   if (req.user) return next(); // already verified earlier in this request
@@ -54,6 +56,10 @@ export async function authenticate(req, res, next) {
       // Server-side inactivity timeout for staff (the browser also logs out on its own)
       // Signed in before the idle period started → force a fresh login
       throw new HttpError(401, "You were signed out after a period of inactivity.", "session_timeout");
+    }
+    // A temporary password (new account / admin reset) must be changed before anything else
+    if (user.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.some((re) => re.test(req.path))) {
+      throw new HttpError(403, "Please change your temporary password on your profile first.", "must_change_password");
     }
     if (!last || Date.now() - last > ACTIVITY_WRITE_EVERY_MS) {
       ref.update({ lastActiveAt: nowIso() }).catch(() => {});

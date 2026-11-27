@@ -7,7 +7,7 @@ import { db, C, BACKUP_COLLECTIONS } from "../firebase.js";
 import { ah, fail, listData, toCsv, getMany, plural } from "../util.js";
 import { requirePerm, requireSuperAdmin } from "../middleware.js";
 import { getSettings, saveSettings, DEFAULT_SETTINGS, usersByRole, audit, subjectTeachersOf, teacherIdsOf } from "../services/core.js";
-import { computeAlerts } from "../services/alerts.js";
+import { computeAlerts, alertsFor } from "../services/alerts.js";
 import { createBackup, listBackups, restoreBackup } from "../services/backup.js";
 import { deviceLabel } from "./auth.js";
 import { weekRows } from "./attendance.js";
@@ -16,10 +16,11 @@ import { submittedForms, flattenForms, STATUS_LABEL } from "../services/attendan
 
 const router = Router();
 
-function sinceFilter(list, days, field = "at") {
-  if (!days) return list;
+// Read only the period being looked at (logs grow every day) – a single-field range query
+async function recent(col, days, field = "at") {
+  if (!Number(days)) return listData(await db.collection(col).get());
   const since = new Date(Date.now() - Number(days) * 86400000).toISOString();
-  return list.filter((r) => (r[field] || "") >= since);
+  return listData(await db.collection(col).where(field, ">=", since).get());
 }
 function sendCsv(res, name, rows, columns) {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -32,7 +33,7 @@ router.get(
   "/logs/activity",
   requirePerm("reports"),
   ah(async (req, res) => {
-    let list = sinceFilter(listData(await db.collection(C.activity).get()), req.query.days || 30);
+    let list = await recent(C.activity, req.query.days || 30);
     if (req.query.role) list = list.filter((r) => r.actorRole === req.query.role);
     if (req.query.userId) list = list.filter((r) => r.actorId === req.query.userId);
     if (req.query.action) list = list.filter((r) => (r.action || "").startsWith(req.query.action));
@@ -49,7 +50,7 @@ router.get(
   "/logs/audit",
   requirePerm("reports"),
   ah(async (req, res) => {
-    let list = sinceFilter(listData(await db.collection(C.audit).get()), req.query.days || 90);
+    let list = await recent(C.audit, req.query.days || 90);
     if (req.query.q) {
       const q = String(req.query.q).toLowerCase();
       list = list.filter((r) => `${r.actorName} ${r.summary} ${r.action}`.toLowerCase().includes(q));
@@ -63,7 +64,7 @@ router.get(
   "/logs/logins",
   requirePerm("reports"),
   ah(async (req, res) => {
-    let list = sinceFilter(listData(await db.collection(C.loginEvents).get()), req.query.days || 30);
+    let list = await recent(C.loginEvents, req.query.days || 30);
     if (req.query.result === "failed") list = list.filter((r) => !r.success);
     if (req.query.result === "success") list = list.filter((r) => r.success);
     if (req.query.userId) list = list.filter((r) => r.uid === req.query.userId);
@@ -84,7 +85,7 @@ router.get(
 router.get(
   "/alerts",
   ah(async (req, res) => {
-    res.json({ alerts: await computeAlerts(), settings: await getSettings() });
+    res.json({ alerts: await alertsFor(req.user), settings: await getSettings() });
   })
 );
 
@@ -175,7 +176,7 @@ const REPORTS = {
     title: "Activity log",
     listed: false,
     async rows(q) {
-      return sinceFilter(listData(await db.collection(C.activity).get()), q.days || 30)
+      return (await recent(C.activity, q.days || 30))
         .sort((a, b) => (a.at < b.at ? 1 : -1))
         .map((r) => ({ at: r.at, user: r.actorName, role: r.actorRole, action: r.action, summary: r.summary }));
     },
@@ -185,7 +186,7 @@ const REPORTS = {
     title: "Login history",
     listed: false,
     async rows(q) {
-      return sinceFilter(listData(await db.collection(C.loginEvents).get()), q.days || 30)
+      return (await recent(C.loginEvents, q.days || 30))
         .sort((a, b) => (a.at < b.at ? 1 : -1))
         .map((r) => ({ at: r.at, user: r.name || "", role: r.role || "", result: r.success ? "Success" : "Failed", reason: r.reason || "", ip: r.ip, device: deviceLabel(r.userAgent || "") }));
     },
@@ -195,7 +196,7 @@ const REPORTS = {
     title: "Notification delivery",
     perm: "notifications",
     async rows(q) {
-      return sinceFilter(listData(await db.collection(C.notifications).get()), q.days || 30, "createdAt")
+      return (await recent(C.notifications, q.days || 30, "createdAt"))
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
         .map((n) => ({ createdAt: n.createdAt, user: n.userName, role: n.userRole, type: n.typeLabel, title: n.title, inApp: n.channels?.inApp?.status, email: n.channels?.email?.status, push: n.channels?.push?.status, read: n.read ? "Yes" : "No", attempts: n.attempts }));
     },

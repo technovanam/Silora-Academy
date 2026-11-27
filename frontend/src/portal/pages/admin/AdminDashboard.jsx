@@ -79,7 +79,7 @@ export function AdminDashboard() {
       </div>
 
       {/* KPI tiles */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={GraduationCap} label="Active students" value={s.activeStudents} hint={`${s.students} total${s.unassignedStudents ? ` · ${s.unassignedStudents} need a teacher` : ""}`} onClick={canUsers ? () => navigate("/portal/admin/students") : undefined} />
         <StatCard icon={Users} label="Active teachers" value={s.activeTeachers} hint={`${s.teachers} total`} tone="blue" onClick={canUsers ? () => navigate("/portal/admin/teachers") : undefined} />
         <StatCard icon={CalendarDays} label="Classes today" value={s.classesToday} hint={`${s.upcomingClasses} upcoming in total`} tone="green" onClick={canClasses ? () => navigate("/portal/admin/classes") : undefined} />

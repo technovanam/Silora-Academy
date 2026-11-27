@@ -9,8 +9,9 @@ import { ah, fail, nowIso, isEmail, str, normName, normGrade, normPhone, tempPas
 import { requirePerm, requireSuperAdmin } from "../middleware.js";
 import { adminView, audit, getUser, hasPerm, ADMIN_PERMISSIONS, usersByRole, subjectTeachersOf, teacherIdsOf, assignmentFields, studentsOfTeacher, sameSubject, canonicalSubject } from "../services/core.js";
 import { notify } from "../services/notify.js";
-import { strongPassword } from "./auth.js";
+import { strongPassword, clearLoginFails } from "./auth.js";
 import { deleteConversationsOf } from "./messages.js";
+import { onTeacherChanged, onAccountDeleted, onAccountRestored, upcomingClassesOf } from "../services/lifecycle.js";
 import { mailConfigured, trySendMail } from "../../mailer.js";
 
 const router = Router();
@@ -119,7 +120,17 @@ async function saveAssignments(req, student, rows, { isNew = false } = {}) {
     await notify([tid], { type: "account", title: "New student assigned", body: `${student.name} has been assigned to you${what ? ` for ${what}` : ""}.`, link: "/portal/teacher/students" });
     await notify([student.id], { type: "account", title: "Your teacher", body: `${teachers[tid]?.name || "A new teacher"} is now your ${what ? `${what} ` : ""}teacher.`, link: "/portal/student" });
   }
-  return fields;
+  // Classes and sessions follow the change (old teacher's upcoming classes, open sessions)
+  const moved = { classesUpdated: 0, classesCancelled: 0, sessionsMoved: 0, sessionsSplit: 0 };
+  if (!isNew) {
+    for (const c of changes.filter((x) => x.from && x.from !== x.to)) {
+      const r = await onTeacherChanged(req.user, { ...student, ...fields }, { subject: c.subject, from: c.from, to: c.to, toName: names[c.to] || "" });
+      for (const k of Object.keys(moved)) moved[k] += r[k] || 0;
+      await notify([c.from], { type: "account", title: "Student moved to another teacher", body: `${student.name}${c.subject ? ` (${c.subject})` : ""} now has another teacher. Their upcoming classes with you were updated.`, link: "/portal/teacher/students" }).catch(() => {});
+    }
+    if (Object.values(moved).some(Boolean)) await audit(req, "user.assign_followup", { targetType: "student", targetId: student.id, summary: `${student.name}: ${moved.sessionsMoved} session(s) moved, ${moved.sessionsSplit} split, ${moved.classesUpdated + moved.classesCancelled} upcoming class(es) updated`, meta: moved });
+  }
+  return { ...fields, moved };
 }
 const teacherLine = (u, names) =>
   subjectTeachersOf(u)
@@ -352,7 +363,10 @@ router.post(
     await auth.updateUser(u.id, { disabled: !active });
     if (!active) await auth.revokeRefreshTokens(u.id);
     await audit(req, active ? "user.activate" : "user.deactivate", { targetType: u.role, targetId: u.id, summary: `${active ? "Activated" : "Deactivated"} ${u.name}` });
-    res.json({ ok: true, active });
+    // A deactivated teacher's upcoming classes stay (deactivation can be temporary) but are
+    // reported back and flagged on the Alerts page until they're reassigned or cancelled
+    const upcomingClasses = !active && u.role === "teacher" ? (await upcomingClassesOf(u.id)).length : 0;
+    res.json({ ok: true, active, upcomingClasses });
   })
 );
 
@@ -371,6 +385,7 @@ router.post(
     await auth.updateUser(u.id, { password });
     await auth.revokeRefreshTokens(u.id);
     await db.collection(C.users).doc(u.id).update({ failedAttempts: 0, lockedUntil: null, mustChangePassword: true });
+    clearLoginFails(u.id);
     await audit(req, "user.reset_password", { targetType: u.role, targetId: u.id, summary: `Reset password for ${u.name}` });
     let email = { status: "off" };
     if (req.body.sendCredentials) {
@@ -388,6 +403,7 @@ router.post(
     const u = await getUser(req.params.id);
     if (!u) fail(404, "User not found");
     await db.collection(C.users).doc(u.id).update({ failedAttempts: 0, lockedUntil: null });
+    clearLoginFails(u.id);
     await audit(req, "user.unlock", { targetType: u.role, targetId: u.id, summary: `Unlocked ${u.name}` });
     res.json({ ok: true });
   })
@@ -409,7 +425,7 @@ router.post(
       rows = cur.length ? cur.map((r) => ({ subject: r.subject, teacherId: t })) : t ? [{ subject: "", teacherId: t }] : [];
     }
     const fields = await saveAssignments(req, s, rows);
-    res.json({ ok: true, subjectTeachers: fields.subjectTeachers });
+    res.json({ ok: true, subjectTeachers: fields.subjectTeachers, moved: fields.moved });
   })
 );
 
@@ -463,6 +479,7 @@ router.delete(
     const purgeNow = req.query.purge === "1";
     if (purgeNow) {
       if (!req.user.superAdmin) fail(403, "Only a super admin can permanently delete immediately");
+      await onAccountDeleted(req.user, u);
       await purgeUser(u.id);
       await audit(req, "user.purge", { targetType: u.role, targetId: u.id, summary: `Permanently deleted ${u.name}` });
       return res.json({ ok: true, purged: true });
@@ -471,8 +488,9 @@ router.delete(
     await db.collection(C.users).doc(u.id).update({ active: false, deletedAt: nowIso(), purgeAfter: addDays(new Date(), days).toISOString() });
     await auth.updateUser(u.id, { disabled: true }).catch(() => {});
     await auth.revokeRefreshTokens(u.id).catch(() => {});
-    await audit(req, "user.delete", { targetType: u.role, targetId: u.id, summary: `Deleted ${u.name} (personal data removed after ${plural(days, "day")})` });
-    res.json({ ok: true, purgeAfterDays: days });
+    const cleanup = await onAccountDeleted(req.user, u);
+    await audit(req, "user.delete", { targetType: u.role, targetId: u.id, summary: `Deleted ${u.name} (personal data removed after ${plural(days, "day")}) – ${cleanup.classesCancelled} upcoming class(es) cancelled, ${cleanup.classesUpdated} updated, ${cleanup.sessionsArchived} session(s) archived`, meta: cleanup });
+    res.json({ ok: true, purgeAfterDays: days, cleanup });
   })
 );
 
@@ -484,8 +502,9 @@ router.post(
     if (!u || u.purged) fail(404, "This account can't be restored");
     await db.collection(C.users).doc(u.id).update({ active: true, deletedAt: null, purgeAfter: null });
     await auth.updateUser(u.id, { disabled: false });
-    await audit(req, "user.restore", { targetType: u.role, targetId: u.id, summary: `Restored ${u.name}` });
-    res.json({ ok: true });
+    const sessionsRestored = await onAccountRestored(req.user, u);
+    await audit(req, "user.restore", { targetType: u.role, targetId: u.id, summary: `Restored ${u.name}${sessionsRestored ? ` (${sessionsRestored} session(s) reopened)` : ""}` });
+    res.json({ ok: true, sessionsRestored });
   })
 );
 

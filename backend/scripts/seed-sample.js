@@ -449,20 +449,18 @@ async function materials() {
   log(`📚 ${n} learning materials`);
 }
 
-// ---- 10. Lesson progress + private teacher notes -----------------------------------------
+// ---- 10. Lesson progress ----------------------------------------------------------------
 async function progress() {
-  let l = 0, nn = 0;
-  const NOTES = ["Strong in concepts, needs to work on speed.", "Gets nervous in tests – encourage more practice papers.", "Very regular and attentive.", "Struggles with word problems; give extra worksheets.", "Parent asked for a monthly progress call.", "Excellent improvement since the last session.", "Often joins a few minutes late – reminded politely.", "Ready for advanced problems."];
+  let l = 0;
   for (const [bi, b] of BATCHES.entries()) {
     for (const [si, sk] of b.students.entries()) {
       for (let k = 0; k < (si === 0 ? 2 : 1); k++) {
         const status = k === 0 ? "completed" : "in_progress";
         if (await soft("lesson", () => call(b.teacher, "POST", "/lessons", { studentId: ids[sk], subject: b.subject, topic: TOPICS[b.subject][k], status, progress: status === "completed" ? 100 : 40 + ((bi + si) % 4) * 15, date: istDate(-(b.day + 7 * (2 - k))), comment: k === 0 ? "Completed with a short test." : "Continuing next class." }))) l++;
       }
-      if ((bi + si) % 2 === 0 && nn < 14) if (await soft("note", () => call(b.teacher, "POST", "/notes", { studentId: ids[sk], text: NOTES[(bi + si) % NOTES.length], pinned: si === 0 }))) nn++;
     }
   }
-  log(`📈 ${l} lesson progress entries, ${nn} teacher notes`);
+  log(`📈 ${l} lesson progress entries`);
 }
 
 // ---- 11. Messages: teacher–student chats, group chats --------------------------------------

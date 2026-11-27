@@ -128,14 +128,30 @@ function PayForm({ p, mode, onDone, onCancel }) {
 }
 
 function PaymentDetail({ id, onClose, onChanged }) {
+  const ui = useUi();
   const { data, loading, error, reload } = useAsync(() => (id ? api.get(`/admin/teacher-payments/${id}`) : Promise.resolve(null)), [id]);
   const [mode, setMode] = useState(null);
+  const [undoReason, setUndoReason] = useState("");
+  const [undoBusy, setUndoBusy] = useState(false);
   if (!id) return null;
   const p = data?.payment;
   const done = () => {
     setMode(null);
     reload(true);
     onChanged();
+  };
+  const undo = async () => {
+    setUndoBusy(true);
+    try {
+      await api.post(`/admin/teacher-payments/${p.id}/unpay`, { reason: undoReason });
+      ui.toast("Payment undone – the record is open again");
+      setUndoReason("");
+      done();
+    } catch (e) {
+      ui.error(e);
+    } finally {
+      setUndoBusy(false);
+    }
   };
   return (
     <Dialog open onClose={onClose} size="xl" title={p ? p.teacherName : "Teacher payment"} subtitle={p ? `${p.sessionName}${p.studentName ? ` · ${p.studentName}${p.studentCode ? ` (${p.studentCode})` : ""}` : ""} · ${day(p.sessionStartDate)} – ${day(p.sessionEndDate)}` : ""}>
@@ -145,7 +161,7 @@ function PaymentDetail({ id, onClose, onChanged }) {
         <ErrorBox error={error} onRetry={reload} />
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
             <StatCard label="Status" value={<TpBadge status={p.status} />} tone="navy" />
             <StatCard label="Classes held" value={`${p.conductedClasses}/${p.scheduledClasses}`} hint={p.dueAt ? `All held · due since ${fmtDate(p.dueAt)}` : ""} tone="green" />
             {p.studentName ? <StatCard label="Student" value={p.studentName} hint={p.studentCode} tone="blue" /> : <StatCard label="Students" value={p.studentCount} tone="blue" />}
@@ -154,11 +170,22 @@ function PaymentDetail({ id, onClose, onChanged }) {
           {p.status === "due" && !mode && <Notice tone="warn">All scheduled classes are completed. Pay the teacher, then record the payment here.</Notice>}
           {p.paidEarly && <Notice tone="warn">Marked as paid before all scheduled classes were held.</Notice>}
 
-          {mode ? (
+          {mode === "undo" ? (
+            <Card>
+              <CardTitle title="Undo this payment?" subtitle="Use this when the payment was recorded by mistake (wrong teacher or session). The record goes back to due / pending; the old details stay in the history." />
+              <Field label="Reason" required>
+                <Textarea rows={2} value={undoReason} onChange={(e) => setUndoReason(e.target.value)} maxLength={500} placeholder="e.g. Recorded on the wrong session" />
+              </Field>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setMode(null)}>Back</Button>
+                <Button variant="danger" onClick={undo} loading={undoBusy} disabled={!undoReason.trim()}>Undo payment</Button>
+              </div>
+            </Card>
+          ) : mode ? (
             <PayForm p={p} mode={mode} onDone={done} onCancel={() => setMode(null)} />
           ) : p.status === "paid" ? (
             <Card>
-              <CardTitle icon={Wallet} title="Payment recorded" subtitle={`${money(p.amount)} on ${day(p.paidOn)}${p.reference ? ` · Ref ${p.reference}` : ""}${p.paidByName ? ` · recorded by ${p.paidByName}` : ""}`} action={<Button size="sm" variant="outline" icon={Pencil} onClick={() => setMode("correct")}>Correct</Button>} />
+              <CardTitle icon={Wallet} title="Payment recorded" subtitle={`${money(p.amount)} on ${day(p.paidOn)}${p.reference ? ` · Ref ${p.reference}` : ""}${p.paidByName ? ` · recorded by ${p.paidByName}` : ""}`} action={<span className="flex gap-2"><Button size="sm" variant="ghost" onClick={() => setMode("undo")}>Undo payment</Button><Button size="sm" variant="outline" icon={Pencil} onClick={() => setMode("correct")}>Correct</Button></span>} />
               {p.note && <p className="mb-3 text-sm text-slate-600">{p.note}</p>}
               <ProofLink proof={p.proof} />
             </Card>
@@ -195,7 +222,7 @@ function PaymentDetail({ id, onClose, onChanged }) {
               {p.history.map((h, i) => (
                 <li key={i}>
                   {fmtDateTime(h.at)} – {h.byName ? `${h.byName}: ` : ""}
-                  {{ created: "Record created", status_due: "All classes held – payment due", status_pending: "Back to pending", paid: `Marked as paid (${money(h.amount)})${h.early ? " early" : ""}`, corrected: `Corrected – ${h.reason}`, removed_from_session: "Teacher removed from the session" }[h.action] || h.action.replace(/_/g, " ")}
+                  {{ created: "Record created", status_due: "All classes held – payment due", status_pending: "Back to pending", paid: `Marked as paid (${money(h.amount)})${h.early ? " early" : ""}`, corrected: `Corrected – ${h.reason}`, unpaid: `Payment undone – ${h.reason}`, removed_from_session: "Teacher removed from the session", session_archived: "Session archived" }[h.action] || h.action.replace(/_/g, " ")}
                   {h.conducted !== undefined ? ` · ${h.conducted}/${h.scheduled} held` : ""}
                 </li>
               ))}
@@ -227,7 +254,7 @@ export function AdminTeacherPayments() {
       <ErrorBox error={error} onRetry={reload} />
       {loading && !data ? <Loading /> : data && (
         <>
-          <div className="mb-5 grid gap-4 sm:grid-cols-3">
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3">
             <StatCard icon={AlertTriangle} label="Payment due" value={data.counts.due} tone="gold" onClick={() => setStatus("due")} />
             <StatCard icon={Clock} label="Pending (classes still to hold)" value={data.counts.pending} tone="blue" onClick={() => setStatus("pending")} />
             <StatCard icon={CheckCircle2} label="Paid" value={data.counts.paid} tone="green" onClick={() => setStatus("paid")} />

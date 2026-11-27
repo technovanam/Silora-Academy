@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell, BookOpen, CalendarDays, CalendarClock, CalendarRange, ChartColumn, ClipboardCheck, Database, FolderOpen, GraduationCap, LayoutDashboard,
   KeyRound, Lock, LogOut, MessagesSquare, Presentation, Receipt, Wallet, ChevronRight, ChevronDown, PanelLeftClose, PanelLeftOpen, Megaphone, Menu, Settings, Video, ShieldCheck, Siren, TrendingUp, User, Users, X, BellRing, CheckCheck, ExternalLink,
+  Layers,
 } from "lucide-react";
 import { SITE } from "../data/site";
 import { useAuth, can } from "./lib/auth.jsx";
 import { api } from "./lib/api.js";
 import { enablePush, pushConfigured, resumePush } from "./lib/firebase.js";
 import { fromNow, roleLabel } from "./lib/format.js";
-import { Avatar, Empty, cx, Menu as DropMenu, useUi } from "./ui/index.jsx";
+import { Avatar, Empty, Loading, cx, Menu as DropMenu, useUi } from "./ui/index.jsx";
 import { FeeReminder, isLockedPath, useFeeStatus } from "./pages/FeePages.jsx";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
@@ -77,7 +78,7 @@ export function navFor(user) {
       { to: "/portal/teacher/calendar", label: "Calendar & classes", icon: CalendarDays },
       { to: "/portal/teacher/timetable", label: "Timetable", icon: CalendarRange },
       { to: "/portal/teacher/attendance", label: "Attendance", icon: ClipboardCheck },
-      { to: "/portal/teacher/sessions", label: "Sessions", icon: CalendarRange },
+      { to: "/portal/teacher/sessions", label: "Sessions", icon: Layers },
       { to: "/portal/teacher/students", label: "My students", icon: GraduationCap },
       { to: "/portal/teacher/materials", label: "Materials", icon: FolderOpen },
       { to: "/portal/teacher/requests", label: "Schedule requests", icon: CalendarClock },
@@ -94,7 +95,7 @@ export function navFor(user) {
     { to: "/portal/admin/admins", label: "Admins & access", icon: ShieldCheck, superOnly: true },
     { section: "Teaching" },
     { to: "/portal/admin/subjects", label: "Subjects", icon: BookOpen, perm: ["settings", "users", "sessions"] },
-    { to: "/portal/admin/sessions", label: "Sessions", icon: CalendarRange, perm: "sessions" },
+    { to: "/portal/admin/sessions", label: "Sessions", icon: Layers, perm: "sessions" },
     { to: "/portal/admin/fees", label: "Session fees", icon: Receipt, perm: "fees" },
     { to: "/portal/admin/demos", label: "Demo requests", icon: Presentation, perm: "demos" },
     { to: "/portal/admin/teacher-payments", label: "Teacher payments", icon: Wallet, perm: "teacherPayments" },
@@ -130,7 +131,7 @@ export function useUnreadMessages(user) {
     let alive = true;
     const load = () => api.get(admin ? "/admin/dm/unread" : "/messages/unread").then((r) => alive && setN(r.unread || 0)).catch(() => {});
     load();
-    const t = setInterval(load, 30000);
+    const t = setInterval(() => document.visibilityState === "visible" && load(), 30000);
     window.addEventListener("portal:messages-read", load);
     return () => {
       alive = false;
@@ -488,28 +489,30 @@ export default function PortalLayout() {
             items={[
               { label: "My profile", icon: User, onClick: () => navigate("/portal/profile") },
               { label: "Notifications", icon: Bell, onClick: () => navigate("/portal/notifications") },
-              { label: "Announcements", icon: BookOpen, onClick: () => navigate("/portal/announcements") },
               { label: "Sign out", icon: LogOut, danger: true, onClick: () => logout() },
             ]}
           />
         </header>
         <main className="mx-auto w-full max-w-[1320px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          {user?.mustChangePassword && pathname !== "/portal/profile" && (
+          {user?.mustChangePassword && pathname === "/portal/profile" && (
             // Phones: message across the full width, button underneath on the right
             <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center">
               <p className="flex min-w-0 flex-1 items-start gap-2.5 leading-relaxed">
                 <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>You're signed in with a password the academy sent you. Please choose your own password to keep your account safe.</span>
+                <span>You're signed in with a temporary password from the academy. Choose your own password below to start using the portal.</span>
               </p>
-              <Link to="/portal/profile" className="self-end whitespace-nowrap rounded-lg bg-navy px-3.5 py-1.5 font-semibold text-white hover:bg-navy-light sm:self-auto">
-                Change password
-              </Link>
             </div>
           )}
           <PushPrompt user={user} />
           <FeeReminder fee={fee} onLogout={logout} />
           <PageBoundary path={pathname}>
-            <Outlet />
+            {user?.mustChangePassword && pathname !== "/portal/profile" ? (
+              <Navigate to="/portal/profile" replace />
+            ) : (
+              <React.Suspense fallback={<Loading />}>
+                <Outlet />
+              </React.Suspense>
+            )}
           </PageBoundary>
         </main>
       </div>

@@ -11,7 +11,7 @@
 // ============================================================
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CalendarClock, CheckCircle2, Copy, Download, ExternalLink, Info, Mail, MessageSquareText, Presentation, RefreshCw, UserPlus, Video } from "lucide-react";
+import { CalendarClock, CheckCircle2, Copy, Download, ExternalLink, Info, Mail, MessageSquareText, Plus, Presentation, RefreshCw, UserPlus, Video } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { SubjectSelect } from "../lib/subjects.jsx";
@@ -137,8 +137,61 @@ export function GuestDone() {
 }
 
 // ---- Admin -----------------------------------------------------------------------------
+/** A request that came in by phone, WhatsApp or a walk-in */
+function AddDemoDialog({ open, onClose, onSaved }) {
+  const ui = useUi();
+  const empty = { name: "", phone: "", email: "", grade: "", board: "", city: "", country: "", source: "Phone call", notes: "" };
+  const [f, setF] = useState(empty);
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const close = () => {
+    setF(empty);
+    onClose();
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post("/admin/demos", f);
+      ui.toast("Demo request added");
+      setF(empty);
+      onSaved(r.id);
+    } catch (e) {
+      ui.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open={open}
+      onClose={close}
+      title="Add a demo request"
+      subtitle="For requests that didn't come through the website form."
+      footer={
+        <>
+          <Button variant="outline" onClick={close}>Cancel</Button>
+          <Button icon={Plus} onClick={save} loading={busy} disabled={!f.name.trim() || !(f.phone.trim() || f.email.trim())}>Add request</Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Student name" required><Input value={f.name} onChange={set("name")} maxLength={80} /></Field>
+        <Field label="How did they contact us?"><Input value={f.source} onChange={set("source")} maxLength={40} placeholder="Phone call, WhatsApp, walk-in…" /></Field>
+        <Field label="Phone" hint="Phone or email is required"><Input value={f.phone} onChange={set("phone")} maxLength={30} /></Field>
+        <Field label="Email"><Input type="email" value={f.email} onChange={set("email")} maxLength={120} /></Field>
+        <Field label="Grade"><Input value={f.grade} onChange={set("grade")} maxLength={40} placeholder="e.g. Grade 9" /></Field>
+        <Field label="Board"><Input value={f.board} onChange={set("board")} maxLength={40} placeholder="CBSE, ICSE…" /></Field>
+        <Field label="City"><Input value={f.city} onChange={set("city")} maxLength={60} /></Field>
+        <Field label="Country"><Input value={f.country} onChange={set("country")} maxLength={60} /></Field>
+        <Field label="Notes" className="sm:col-span-2"><Textarea rows={2} value={f.notes} onChange={set("notes")} maxLength={2000} /></Field>
+      </div>
+    </Dialog>
+  );
+}
+
 export function AdminDemos() {
   const ui = useUi();
+  const [adding, setAdding] = useState(false);
   const [params, setParams] = useSearchParams();
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
@@ -150,7 +203,8 @@ export function AdminDemos() {
   const open = params.get("d");
   return (
     <>
-      <PageHeader title="Demo requests" subtitle="Requests from the website's “Book a demo” form. Schedule a teacher and send the guest link – no account is needed for a demo." actions={<Button variant="outline" icon={Download} onClick={() => api.download("/admin/demos", { format: "csv" }).catch(ui.error)}>Export CSV</Button>} />
+      <PageHeader title="Demo requests" subtitle="Requests from the website's “Book a demo” form. Schedule a teacher and send the guest link – no account is needed for a demo." actions={<><Button variant="outline" icon={Download} onClick={() => api.download("/admin/demos", { format: "csv" }).catch(ui.error)}>Export CSV</Button><Button icon={Plus} onClick={() => setAdding(true)}>Add request</Button></>} />
+      <AddDemoDialog open={adding} onClose={() => setAdding(false)} onSaved={(newId) => { setAdding(false); reload(true); setParams({ d: newId }); }} />
       <ErrorBox error={error} onRetry={reload} />
       {loading && !data ? (
         <Loading />
@@ -180,12 +234,12 @@ export function AdminDemos() {
           </>
         )
       )}
-      {open && <DemoDialog id={open} onClose={() => setParams({})} onChanged={() => reload(true)} />}
+      {open && <DemoDialog id={open} onClose={() => setParams({})} onChanged={() => reload(true)} onDeleted={() => { setParams({}); reload(true); }} />}
     </>
   );
 }
 
-function DemoDialog({ id, onClose, onChanged }) {
+function DemoDialog({ id, onClose, onChanged, onDeleted }) {
   const ui = useUi();
   const { data, loading, error, reload } = useAsync(() => api.get(`/admin/demos/${id}`), [id]);
   const dir = useAsync(() => api.get("/admin/directory"), []);
@@ -257,6 +311,27 @@ function DemoDialog({ id, onClose, onChanged }) {
               {open && <Button size="sm" variant="ghost" onClick={() => setStatus("cancelled", { title: "Cancel this demo?", message: "The demo class is cancelled and the guest link stops working.", confirmLabel: "Cancel demo" })}>Cancel demo</Button>}
               {["completed", "no_show", "cancelled"].includes(d.status) && <Button size="sm" variant="ghost" loading={busy === "new"} onClick={() => setStatus("new")}>Reopen</Button>}
               {d.status !== "converted" && <Button size="sm" icon={UserPlus} onClick={() => setConverting(true)}>Convert to student</Button>}
+              {d.status !== "converted" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    ui.confirm({
+                      title: "Delete this demo request?",
+                      message: `${d.name}'s request is removed${d.status === "scheduled" ? " and the scheduled demo class is cancelled" : ""}. Use this for spam or duplicates.`,
+                      danger: true,
+                      confirmLabel: "Delete",
+                      onConfirm: async () => {
+                        await api.del(`/admin/demos/${id}`);
+                        ui.toast("Demo request deleted");
+                        onDeleted?.();
+                      },
+                    })
+                  }
+                >
+                  Delete
+                </Button>
+              )}
             </span>
           </div>
 

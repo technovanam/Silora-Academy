@@ -419,24 +419,27 @@ export function AdminUserDetail() {
   const toggleActive = () =>
     ui.confirm({
       title: u.active ? `Deactivate ${u.name}?` : `Activate ${u.name}?`,
-      message: u.active ? "They'll be signed out and won't be able to sign in until reactivated. Their data is kept." : "They'll be able to sign in again.",
+      message: u.active
+        ? `They'll be signed out and won't be able to sign in until reactivated. Their data is kept.${u.role === "teacher" ? " Their upcoming classes stay on students' calendars – give the students another teacher or cancel those classes (the Alerts page lists them)." : ""}`
+        : "They'll be able to sign in again.",
       danger: u.active,
       confirmLabel: u.active ? "Deactivate" : "Activate",
       onConfirm: async () => {
-        await api.post(`/admin/users/${u.id}/status`, { active: !u.active });
-        ui.toast(u.active ? "Account deactivated" : "Account activated");
+        const r = await api.post(`/admin/users/${u.id}/status`, { active: !u.active });
+        ui.toast(u.active ? (r.upcomingClasses ? `Account deactivated – ${r.upcomingClasses} upcoming class${r.upcomingClasses === 1 ? "" : "es"} still need another teacher` : "Account deactivated") : "Account activated");
         reload(true);
       },
     });
   const remove = (purge) =>
     ui.confirm({
       title: purge ? "Permanently delete now?" : `Delete ${u.name}?`,
-      message: purge ? "Their sign-in and personal details are removed immediately. This can't be undone." : "The account is disabled now and personal details are removed automatically after the retention period. You can restore it until then.",
+      message: `${purge ? "Their sign-in and personal details are removed immediately. This can't be undone." : "The account is disabled now and personal details are removed automatically after the retention period. You can restore it until then."} ${u.role === "teacher" ? "Their upcoming classes are cancelled and the students are told." : u.role === "student" ? "They're taken out of upcoming classes and the timetable, and their open sessions are archived." : ""}`,
       danger: true,
       confirmLabel: purge ? "Delete permanently" : "Delete",
       onConfirm: async () => {
-        await api.del(`/admin/users/${u.id}${purge ? "?purge=1" : ""}`);
-        ui.toast("Deleted");
+        const r = await api.del(`/admin/users/${u.id}${purge ? "?purge=1" : ""}`);
+        const c = r?.cleanup;
+        ui.toast(c && (c.classesCancelled || c.classesUpdated || c.sessionsArchived) ? `Deleted – ${[c.classesCancelled && `${c.classesCancelled} class(es) cancelled`, c.classesUpdated && `${c.classesUpdated} class(es) updated`, c.sessionsArchived && `${c.sessionsArchived} session(s) archived`].filter(Boolean).join(", ")}` : "Deleted");
         if (purge) navigate(back);
         else reload(true);
       },
@@ -491,7 +494,7 @@ export function AdminUserDetail() {
       )}
 
       {u.role === "student" && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             icon={UserCheck}
             label="Subjects & teachers"
@@ -616,9 +619,12 @@ export function AdminUserDetail() {
                 act(async () => {
                   const clean = cleanRows(rows);
                   if (new Set(clean.map((r) => r.subject.toLowerCase())).size !== clean.length) throw new Error("Each subject can only be listed once");
-                  await api.post(`/admin/users/${u.id}/assign`, { subjectTeachers: clean });
+                  const r = await api.post(`/admin/users/${u.id}/assign`, { subjectTeachers: clean });
                   setAssign(false);
-                }, "Teachers updated – new teachers and the student have been notified")
+                  const m = r.moved || {};
+                  const parts = [m.sessionsMoved && `${m.sessionsMoved} session(s) moved to the new teacher`, m.sessionsSplit && `${m.sessionsSplit} session(s) continued with the new teacher`, (m.classesUpdated || m.classesCancelled) && `${m.classesUpdated + m.classesCancelled} upcoming class(es) with the old teacher updated`].filter(Boolean);
+                  ui.toast(`Teachers updated${parts.length ? ` – ${parts.join(", ")}` : ""}. Everyone affected was notified.`);
+                })
               }
             >
               Save
@@ -627,7 +633,7 @@ export function AdminUserDetail() {
         }
       >
         <SubjectTeachersEditor rows={rows} onChange={setRows} teachers={dir.data?.teachers || []} />
-        <p className="mt-3 text-xs text-muted">Existing classes stay with their current teacher.</p>
+        <p className="mt-3 text-xs text-muted">When a subject gets a new teacher, the student leaves the old teacher's upcoming classes for that subject, and the open session moves to the new teacher. If some of its classes were already held, the old teacher's part is closed (so they're paid for it) and a new session with the remaining classes starts with the new teacher – the fee already paid carries over. Schedule the new teacher's classes afterwards.</p>
       </Dialog>
     </>
   );

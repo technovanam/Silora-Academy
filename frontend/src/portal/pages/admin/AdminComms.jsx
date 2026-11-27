@@ -93,13 +93,15 @@ function AnnouncementDialog({ open, onClose, item, onSaved }) {
 }
 
 function ReadsDialog({ item, onClose }) {
-  const { data, loading } = useAsync(() => (item ? api.get(`/admin/announcements/${item.id}/reads`) : Promise.resolve(null)), [item?.id]);
+  const { data, loading, error, reload } = useAsync(() => (item ? api.get(`/admin/announcements/${item.id}/reads`) : Promise.resolve(null)), [item?.id]);
   if (!item) return null;
   const rows = data?.rows || [];
   const read = rows.filter((r) => r.read).length;
   return (
     <Dialog open onClose={onClose} title="Read tracking" subtitle={item.title} size="lg">
-      {loading ? (
+      {error ? (
+        <ErrorBox error={error} onRetry={reload} />
+      ) : loading ? (
         <Loading />
       ) : (
         <>
@@ -259,7 +261,7 @@ export function AdminNotifications() {
     <>
       <PageHeader title="Notification delivery" subtitle={`Every notification with its in-app, email and push status. Failed channels are retried automatically up to ${plural(data?.maxAttempts || 3, "time")}.`} actions={<Button variant="outline" icon={RefreshCw} onClick={() => reload()}>Refresh</Button>} />
       {st && (
-        <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={BellRing} label="Sent" value={st.total} hint={`${st.read} read in-app`} />
           <StatCard icon={Monitor} label="In-app delivered" value={st.inApp.sent} tone="green" />
           <StatCard icon={Mail} label="Emails sent" value={st.email.sent} hint={`${st.email.failed} failed · ${st.email.skipped} skipped`} tone={st.email.failed ? "red" : "blue"} />

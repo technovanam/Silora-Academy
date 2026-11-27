@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FolderOpen, GraduationCap, List, Lock, Megaphone, MoreHorizontal,
-  Pencil, Pin, Plus, StickyNote, Trash2, TrendingUp, ArrowRight,
+  ArrowLeft, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FolderOpen, GraduationCap, List, Megaphone, MoreHorizontal,
+  Pencil, Plus, Trash2, TrendingUp, ArrowRight,
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -66,7 +66,7 @@ export function TeacherDashboard() {
           <ArrowRight className="h-4 w-4" />
         </Link>
       )}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={GraduationCap} label="My students" value={s.students} />
         <StatCard icon={CalendarDays} label="Classes in the next 7 days" value={s.classesThisWeek} tone="blue" />
         <StatCard icon={FolderOpen} label="Materials" value={s.materials} hint={s.scheduled ? `${s.scheduled} scheduled` : ""} tone="violet" />
@@ -166,7 +166,7 @@ export function TeacherCalendar() {
           </>
         }
       />
-      <ErrorBox error={meetings.error} onRetry={meetings.reload} />
+      <ErrorBox error={meetings.error || students.error} onRetry={() => { meetings.reload(); students.reload(); }} />
       {meetings.loading ? (
         <Loading />
       ) : view === "week" ? (
@@ -329,40 +329,16 @@ export function TeacherStudentDetail() {
   const ui = useUi();
   const students = useAsync(() => api.get("/my-students"), []);
   const lessons = useAsync(() => api.get("/lessons", { studentId: id }), [id]);
-  const notes = useAsync(() => api.get("/notes", { studentId: id }), [id]);
   const classes = useAsync(() => api.get("/meetings", { studentId: id }), [id]);
   const [lessonDlg, setLessonDlg] = useState(null);
-  const [note, setNote] = useState("");
-  const [editNote, setEditNote] = useState(null);
   const [tab, setTab] = useState("progress");
   const s = students.data?.students.find((x) => x.id === id);
 
   if (students.loading) return <Loading />;
+  if (students.error) return <ErrorBox error={students.error} onRetry={students.reload} />;
   if (!s) return <Empty icon={GraduationCap} title="Student not found" text="This student isn't assigned to you." action={<Link to="/portal/teacher/students"><Button variant="outline">Back to students</Button></Link>} />;
 
-  const addNote = async (e) => {
-    e.preventDefault();
-    if (!note.trim()) return;
-    try {
-      await api.post("/notes", { studentId: id, text: note });
-      setNote("");
-      notes.reload(true);
-    } catch (err) {
-      ui.error(err);
-    }
-  };
-  const saveNote = async () => {
-    await api.patch(`/notes/${editNote.id}`, { text: editNote.text });
-    setEditNote(null);
-    notes.reload(true);
-  };
-  const delNote = (n) => ui.confirm({ title: "Delete this note?", message: "This can't be undone.", danger: true, confirmLabel: "Delete", onConfirm: async () => { await api.del(`/notes/${n.id}`); notes.reload(true); } });
   const delLesson = (l) => ui.confirm({ title: "Delete lesson?", message: `"${l.topic}" will be removed from the student's progress.`, danger: true, confirmLabel: "Delete", onConfirm: async () => { await api.del(`/lessons/${l.id}`); lessons.reload(true); } });
-  const pin = async (n) => {
-    await api.patch(`/notes/${n.id}`, { pinned: !n.pinned });
-    notes.reload(true);
-  };
-  const sortedNotes = [...(notes.data?.notes || [])].sort((a, b) => Number(b.pinned) - Number(a.pinned));
   const now = new Date().toISOString();
 
   return (
@@ -377,7 +353,8 @@ export function TeacherStudentDetail() {
         subtitle={[s.grade, s.board, s.subjects.join(", ")].filter(Boolean).join(" · ")}
         actions={<Button icon={Plus} onClick={() => setLessonDlg({})}>Add lesson</Button>}
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <ErrorBox error={lessons.error || classes.error} onRetry={() => { lessons.reload(); classes.reload(); }} />
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={TrendingUp} label="Overall progress" value={`${s.progress}%`} tone="blue" />
         <StatCard icon={BookOpen} label="Lessons completed" value={`${s.lessonsCompleted}/${s.lessonsTotal}`} tone="green" />
         <StatCard icon={FolderOpen} label="Materials opened" value={`${s.materialsOpened}/${s.materialsAssigned}`} tone="violet" />
@@ -389,7 +366,6 @@ export function TeacherStudentDetail() {
         onChange={setTab}
         options={[
           { value: "progress", label: "Lesson progress", icon: ClipboardList },
-          { value: "notes", label: "Private notes", icon: StickyNote, count: notes.data?.notes.length },
           { value: "classes", label: "Classes", icon: CalendarDays },
         ]}
       />
@@ -422,53 +398,6 @@ export function TeacherStudentDetail() {
           )}
         </Card>
       )}
-      {tab === "notes" && (
-        <Card>
-          <Notice icon={Lock} className="mb-4">
-            Private notes are only visible to you. Students, parents and other teachers can't see them.
-          </Notice>
-          <form onSubmit={addNote} className="mb-5 flex flex-col gap-2 sm:flex-row">
-            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Write a note about this student…" maxLength={3000} className="flex-1" />
-            <Button type="submit" icon={Plus} className="sm:self-end">
-              Add note
-            </Button>
-          </form>
-          {notes.loading ? (
-            <Loading />
-          ) : sortedNotes.length === 0 ? (
-            <Empty icon={StickyNote} title="No notes yet" className="py-8" />
-          ) : (
-            <ul className="space-y-3">
-              {sortedNotes.map((n) => (
-                <li key={n.id} className={cx("rounded-2xl border p-4", n.pinned ? "border-brand/40 bg-brand-soft/50" : "border-line")}>
-                  {editNote?.id === n.id ? (
-                    <div className="space-y-2">
-                      <Textarea rows={3} value={editNote.text} onChange={(e) => setEditNote({ ...editNote, text: e.target.value })} />
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={saveNote}>Save</Button>
-                        <Button size="sm" variant="outline" onClick={() => setEditNote(null)}>Cancel</Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex gap-3">
-                      <p className="min-w-0 flex-1 whitespace-pre-line text-[15px] text-ink">{n.text}</p>
-                      <div className="flex shrink-0">
-                        <IconButton icon={Pin} label={n.pinned ? "Unpin" : "Pin"} onClick={() => pin(n)} className={n.pinned ? "text-[#a77d00]" : ""} />
-                        <IconButton icon={Pencil} label="Edit" onClick={() => setEditNote({ id: n.id, text: n.text })} />
-                        <IconButton icon={Trash2} label="Delete" tone="danger" onClick={() => delNote(n)} />
-                      </div>
-                    </div>
-                  )}
-                  <p className="mt-2 text-xs text-slate-400">
-                    {fmtDateTime(n.createdAt)}
-                    {n.updatedAt && ` · edited ${fromNow(n.updatedAt)}`}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
       {tab === "classes" && (
         <div className="space-y-3">
           {classes.loading ? (
@@ -493,13 +422,14 @@ export function TeacherMaterials() {
   return (
     <>
       <PageHeader title="Materials" subtitle="Upload, organise and share files with your students. You'll see who opened each one." />
+      <ErrorBox error={students.error} onRetry={students.reload} />
       {students.loading ? <Loading /> : <MaterialsManager mode="teacher" students={students.data?.students || []} />}
     </>
   );
 }
 
 // ---- Schedule requests -----------------------------------------------------------------------
-const REQ_STATUS = { pending: ["amber", "Waiting for admin"], approved: ["green", "Approved"], rejected: ["red", "Declined"] };
+const REQ_STATUS = { pending: ["amber", "Waiting for admin"], approved: ["green", "Approved"], rejected: ["red", "Declined"], withdrawn: ["gray", "Withdrawn"] };
 export function ScheduleRequestsList({ admin }) {
   const ui = useUi();
   const [status, setStatus] = useState("pending");
@@ -509,6 +439,17 @@ export function ScheduleRequestsList({ admin }) {
   const all = useMemo(() => data?.requests || [], [data]);
   const list = useMemo(() => all.filter((r) => status === "all" || r.status === status), [all, status]);
 
+  const withdraw = (r) =>
+    ui.confirm({
+      title: "Withdraw this request?",
+      message: "The class stays as it is and the academy won't review the request.",
+      confirmLabel: "Withdraw",
+      onConfirm: async () => {
+        await api.post(`/schedule-requests/${r.id}/withdraw`);
+        ui.toast("Request withdrawn");
+        reload(true);
+      },
+    });
   const submit = async (decision) => {
     try {
       await api.post(`/schedule-requests/${decide.id}/decide`, { decision, note });
@@ -531,6 +472,7 @@ export function ScheduleRequestsList({ admin }) {
           { value: "pending", label: "Pending", count: all.filter((r) => r.status === "pending").length },
           { value: "approved", label: "Approved" },
           { value: "rejected", label: "Declined" },
+          { value: "withdrawn", label: "Withdrawn" },
           { value: "all", label: "All" },
         ]}
       />
@@ -549,7 +491,7 @@ export function ScheduleRequestsList({ admin }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={r.type === "cancel" ? "red" : "violet"}>{r.type === "cancel" ? "Cancel" : "Reschedule"}</Badge>
-                    <Badge tone={REQ_STATUS[r.status][0]}>{REQ_STATUS[r.status][1]}</Badge>
+                    <Badge tone={(REQ_STATUS[r.status] || REQ_STATUS.pending)[0]}>{(REQ_STATUS[r.status] || [null, r.status])[1]}</Badge>
                     <span className="text-xs text-slate-400">{fromNow(r.createdAt)}</span>
                   </div>
                   <p className="mt-2 font-semibold text-navy">{r.meeting?.title || "Class removed"}</p>
@@ -568,6 +510,11 @@ export function ScheduleRequestsList({ admin }) {
                       Review
                     </Button>
                   </div>
+                )}
+                {!admin && r.status === "pending" && (
+                  <Button variant="ghost" size="sm" onClick={() => withdraw(r)}>
+                    Withdraw
+                  </Button>
                 )}
               </div>
             </Card>

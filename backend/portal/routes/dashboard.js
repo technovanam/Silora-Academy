@@ -5,7 +5,7 @@ import { Router } from "express";
 import { db, C } from "../firebase.js";
 import { ah, listData, getMany, weekStartOf, nowIso, localDateOf } from "../util.js";
 import { hasPerm, usersByRole, studentsOfTeacher, subjectTeachersOf, teacherIdsOf } from "../services/core.js";
-import { computeAlerts } from "../services/alerts.js";
+import { computeAlerts, alertsFor } from "../services/alerts.js";
 import { summarize, flattenForms, getRules, isFormDue } from "../services/attendance.js";
 import { pendingForms } from "./attendance.js";
 import { feeState, feeRestrictions, isLocked } from "../services/fees.js";
@@ -153,7 +153,7 @@ router.get(
     const weekStart = weekStartOf(new Date());
     const att = hasPerm(u, "attendance") ? await pendingForms() : null;
     const pendingLeave = hasPerm(u, "attendance") ? (await db.collection(C.leaveRequests).where("status", "==", "pending").count().get()).data().count : null;
-    const alerts = await computeAlerts();
+    const alerts = await alertsFor(u);
 
     // classes per day for the next 7 days (chart)
     const perDay = [];

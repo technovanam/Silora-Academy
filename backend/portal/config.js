@@ -16,6 +16,17 @@ if (useEmulators) {
   process.env.FIREBASE_STORAGE_EMULATOR_HOST ||= "127.0.0.1:9199";
 }
 
+// The secret that signs file links. In the cloud (K_SERVICE set) the server refuses to
+// start without a real one, so links can never be signed with a guessable default.
+const DEV_FILE_SECRET = "dev-only-change-me-file-token-secret";
+function fileTokenSecret() {
+  const v = process.env.FILE_TOKEN_SECRET || "";
+  if (v && v !== DEV_FILE_SECRET && v.length >= 16) return v;
+  if (process.env.K_SERVICE) throw new Error("FILE_TOKEN_SECRET is missing or too short (min 16 characters). Set it with scripts/set-secrets.sh before deploying.");
+  if (!useEmulators) console.warn("⚠️  FILE_TOKEN_SECRET is not set (or too short) – using a development value. Set a long random value before going live.");
+  return v || DEV_FILE_SECRET;
+}
+
 export const config = {
   useEmulators,
   projectId: process.env.FIREBASE_PROJECT_ID || "demo-silora",
@@ -32,7 +43,7 @@ export const config = {
   timezone: process.env.APP_TIMEZONE || "Asia/Kolkata",
 
   // Secret used to sign short-lived file links (materials, backups)
-  fileTokenSecret: process.env.FILE_TOKEN_SECRET || "dev-only-change-me-file-token-secret",
+  fileTokenSecret: fileTokenSecret(),
   fileTokenTtlSec: num(process.env.FILE_TOKEN_TTL_SEC, 15 * 60),
 
   // Uploads

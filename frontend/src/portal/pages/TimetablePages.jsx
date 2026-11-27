@@ -4,14 +4,87 @@
 //   Teacher / Student: view-only weekly timetable
 // ============================================================
 import React, { useMemo, useState } from "react";
-import { CalendarRange, LayoutGrid, List, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarPlus, CalendarRange, LayoutGrid, List, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { teacherIdsOf } from "../lib/assign.js";
 import { plural } from "../lib/format.js";
-import { Badge, Button, Card, Empty, ErrorBox, IconButton, Loading, Menu, PageHeader, Segmented, Select, Table, useAsync, useUi } from "../ui/index.jsx";
+import { Badge, Button, Card, Dialog, Empty, ErrorBox, Field, IconButton, Input, Loading, Menu, Notice, PageHeader, Segmented, Select, Table, useAsync, useUi } from "../ui/index.jsx";
 import { TimetableDetail, TimetableFormDialog, TimetableGrid, dayLabel, fmtLength, fmtRange, tzLabel } from "../components/timetable.jsx";
 
 const tzNote = (tz) => (tz ? `Times are in ${tzLabel(tz)}.` : "");
+
+// ---- Turn a weekly slot into real classes -------------------------------------------------
+// The timetable is the weekly plan; classes are what students join. This creates the classes
+// for the next weeks from a slot, so the admin doesn't type the same schedule twice.
+const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+/** "YYYY-MM-DD" of the next given weekday (1 = Monday) in the academy's time zone, today included if the slot hasn't started */
+function nextDateFor(day, start, tz) {
+  const parts = (d) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(d).map((p) => [p.type, p.value]));
+  const wd = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  for (let i = 0; i < 8; i++) {
+    const p = parts(new Date(Date.now() + i * 86400000));
+    if (wd[p.weekday] !== day) continue;
+    if (i === 0 && Number(p.hour) * 60 + Number(p.minute) >= toMin(start)) continue;
+    return `${p.year}-${p.month}-${p.day}`;
+  }
+  return "";
+}
+/** ISO time of a date + "HH:MM" in the academy's time zone */
+function zonedIso(date, time, tz) {
+  const guess = new Date(`${date}T${time}:00Z`);
+  const name = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" }).formatToParts(guess).find((p) => p.type === "timeZoneName")?.value || "GMT";
+  const m = name.match(/GMT([+-])(\d{2}):?(\d{2})?/);
+  const offsetMin = m ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] || 0)) : 0;
+  return new Date(guess.getTime() - offsetMin * 60000).toISOString();
+}
+
+function ScheduleFromSlotDialog({ entry, timezone, onClose }) {
+  const ui = useUi();
+  const tz = timezone || "Asia/Kolkata";
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+  React.useEffect(() => {
+    if (entry) setF({ date: nextDateFor(entry.day, entry.start, tz), weeks: 4, title: `${entry.subject}${entry.lesson ? ` – ${entry.lesson}` : ""}` });
+  }, [entry, tz]);
+  if (!entry || !f) return null;
+  const duration = toMin(entry.end) - toMin(entry.start);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post("/meetings", { teacherId: entry.teacherId, subject: entry.subject, studentIds: entry.studentIds, title: f.title, durationMin: duration, startAt: zonedIso(f.date, entry.start, tz), repeatWeeks: Number(f.weeks) || 1, notes: entry.notes || "" });
+      ui.toast(`${plural(r.ids?.length || 0, "class", "classes")} scheduled – the teacher and students were notified`);
+      onClose();
+    } catch (e) {
+      ui.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      size="sm"
+      title="Schedule classes from this slot"
+      subtitle={`${entry.subject} · ${dayLabel(entry.day)} ${fmtRange(entry)} · ${entry.teacherName}`}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button icon={CalendarPlus} onClick={save} loading={busy} disabled={!f.date || !f.title.trim()}>Schedule {plural(Number(f.weeks) || 1, "class", "classes")}</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Class title" required><Input value={f.title} onChange={(e) => setF((x) => ({ ...x, title: e.target.value }))} maxLength={120} /></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={`First class (${dayLabel(entry.day)})`} required><Input type="date" value={f.date} onChange={(e) => setF((x) => ({ ...x, date: e.target.value }))} /></Field>
+          <Field label="Weeks" hint="One class a week, up to 12"><Input type="number" min={1} max={12} value={f.weeks} onChange={(e) => setF((x) => ({ ...x, weeks: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))} /></Field>
+        </div>
+        <Notice>Classes are created for {plural(entry.studentIds?.length || 0, "student")} at {fmtRange(entry)} ({tzLabel(tz)}). A week that clashes with another class stops the whole batch – adjust and try again.</Notice>
+      </div>
+    </Dialog>
+  );
+}
 
 function Summary({ entries }) {
   const days = new Set(entries.map((e) => e.day)).size;
@@ -69,6 +142,7 @@ export function AdminTimetable() {
             trigger={<IconButton icon={MoreHorizontal} label="More" />}
             items={[
               { label: "Edit", icon: Pencil, onClick: () => setDialog({ type: "edit", e }) },
+              { label: "Schedule classes", icon: CalendarPlus, onClick: () => setDialog({ type: "schedule", e }) },
               { label: "Delete", icon: Trash2, danger: true, onClick: () => remove(e) },
             ]}
           />
@@ -136,7 +210,8 @@ export function AdminTimetable() {
         teachers={teachers.filter((t) => t.active || t.id === dialog?.e?.teacherId)}
         students={students}
       />
-      <TimetableDetail entry={dialog?.type === "detail" ? dialog.e : null} timezone={tt.data?.timezone} onClose={() => setDialog(null)} canEdit onEdit={(e) => setDialog({ type: "edit", e })} onDelete={remove} />
+      <TimetableDetail entry={dialog?.type === "detail" ? dialog.e : null} timezone={tt.data?.timezone} onClose={() => setDialog(null)} canEdit onEdit={(e) => setDialog({ type: "edit", e })} onDelete={remove} onSchedule={(e) => setDialog({ type: "schedule", e })} />
+      <ScheduleFromSlotDialog entry={dialog?.type === "schedule" ? dialog.e : null} timezone={tt.data?.timezone} onClose={() => setDialog(null)} />
     </>
   );
 }

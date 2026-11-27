@@ -14,6 +14,14 @@ import { mailConfigured, trySendMail } from "../../mailer.js";
 export const publicRouter = Router();
 export const meRouter = Router();
 
+// Revoke every session of a user and hand back a new sign-in for the current device.
+// Firebase compares whole seconds, so wait past the revocation second before signing in again.
+async function signOutEverywhere(uid, role) {
+  await auth.revokeRefreshTokens(uid);
+  await new Promise((r) => setTimeout(r, 1100));
+  return auth.createCustomToken(uid, { role });
+}
+
 const PASSWORD_RULE = "Password must be at least 8 characters and include a letter and a number";
 export const strongPassword = (p) => typeof p === "string" && p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
 
@@ -60,6 +68,24 @@ async function findAuthUser(email) {
   }
 }
 
+// ---- Failed sign-ins, counted per device (IP) --------------------------------------
+// • one IP + one account: locked after maxFailedLogins failures (only that device is
+//   blocked, so someone who knows a student's email can't lock the student out)
+// • one account from anywhere: locked in the database after 3× that many failures
+// • one IP across all accounts: refused after IP_FAIL_LIMIT failures (password spraying)
+const fails = new Map(); // key → failure times
+const IP_FAIL_LIMIT = 30;
+const recentFails = (key, windowMs) => (fails.get(key) || []).filter((t) => Date.now() - t < windowMs);
+function noteFail(...keys) {
+  if (fails.size > 20000) fails.clear();
+  for (const k of keys) fails.set(k, [...recentFails(k, 3600000), Date.now()]);
+}
+const forgotHits = new Map();
+/** Admin "Unlock": forget this account's failed attempts on every device */
+export function clearLoginFails(uid) {
+  for (const k of fails.keys()) if (k.startsWith(`acct|${uid}|`)) fails.delete(k);
+}
+
 // ---- POST /auth/login ---------------------------------------------------------
 publicRouter.post(
   "/auth/login",
@@ -68,6 +94,9 @@ publicRouter.post(
     const password = String(req.body.password || "");
     if (!isEmail(email) || !password) fail(400, "Enter your email and password");
     const settings = await getSettings();
+    const ip = clientIp(req) || "unknown";
+    const lockMs = settings.lockMinutes * 60000;
+    if (recentFails(`ip|${ip}`, 15 * 60000).length >= IP_FAIL_LIMIT) fail(429, "Too many sign-in attempts from this network. Please wait 15 minutes and try again.", "rate_limited");
 
     let authUser = null;
     try {
@@ -78,6 +107,12 @@ publicRouter.post(
     const user = authUser ? await getUser(authUser.uid) : null;
     const accountEmail = authUser?.email || email; // the real email when an alias was typed
 
+    const deviceFails = user ? recentFails(`acct|${user.id}|${ip}`, lockMs) : [];
+    if (user && deviceFails.length >= settings.maxFailedLogins) {
+      await logLogin(req, { uid: user.id, email, success: false, reason: "locked", role: user.role, name: user.name });
+      const mins = Math.max(1, Math.ceil((deviceFails[0] + lockMs - Date.now()) / 60000));
+      fail(423, `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"} or reset your password.`, "locked");
+    }
     if (user?.lockedUntil && new Date(user.lockedUntil) > new Date()) {
       await logLogin(req, { uid: user.id, email, success: false, reason: "locked", role: user.role, name: user.name });
       const mins = Math.ceil((new Date(user.lockedUntil) - Date.now()) / 60000);
@@ -86,10 +121,11 @@ publicRouter.post(
 
     const ok = authUser ? await passwordIsValid(accountEmail, password) : false;
     if (!ok) {
+      noteFail(`ip|${ip}`, ...(user ? [`acct|${user.id}|${ip}`] : []));
       if (user) {
         const failed = (user.failedAttempts || 0) + 1;
         const update = { failedAttempts: failed, lastFailedLoginAt: nowIso() };
-        if (failed >= settings.maxFailedLogins) {
+        if (failed >= settings.maxFailedLogins * 3) {
           update.lockedUntil = addMinutes(new Date(), settings.lockMinutes).toISOString();
           update.failedAttempts = 0;
         }
@@ -109,6 +145,7 @@ publicRouter.post(
     }
 
     const at = nowIso();
+    fails.delete(`acct|${user.id}|${ip}`);
     await db.collection(C.users).doc(user.id).update({ failedAttempts: 0, lockedUntil: null, lastLoginAt: at, lastActiveAt: at });
     await logLogin(req, { uid: user.id, email, success: true, role: user.role, name: user.name });
     await logActivity(req, "auth.login", { actor: user, summary: "Signed in" });
@@ -127,6 +164,12 @@ publicRouter.post(
     // The email is sent BEFORE answering: on Cloud Functions, work after the
     // response is sent may never run.
     if (!isEmail(typed)) return res.json({ ok: true });
+    // At most 5 reset emails per network per 15 minutes (same answer either way)
+    const fip = clientIp(req) || "unknown";
+    const hits = (forgotHits.get(fip) || []).filter((t) => Date.now() - t < 15 * 60000);
+    if (forgotHits.size > 10000) forgotHits.clear();
+    forgotHits.set(fip, [...hits, Date.now()]);
+    if (hits.length >= 5) return res.json({ ok: true });
     let email = typed;
     try {
       const authUser = await findAuthUser(typed);
@@ -226,8 +269,10 @@ meRouter.post(
     if (!(await passwordIsValid(authUser.email, String(currentPassword || "")))) fail(400, "Your current password is incorrect");
     await auth.updateUser(req.user.id, { password: newPassword });
     await db.collection(C.users).doc(req.user.id).update({ mustChangePassword: false });
-    await logActivity(req, "auth.password_changed", { summary: "Changed their password" });
-    res.json({ ok: true });
+    // Every other device is signed out; this one gets a fresh sign-in
+    const customToken = await signOutEverywhere(req.user.id, req.user.role);
+    await logActivity(req, "auth.password_changed", { summary: "Changed their password (signed out on other devices)" });
+    res.json({ ok: true, customToken });
   })
 );
 
@@ -237,6 +282,17 @@ meRouter.post(
     const token = str(req.body.token, 4096);
     if (!token) fail(400, "Missing token");
     await db.collection(C.pushTokens).doc(token.slice(-60).replace(/[^\w-]/g, "_")).set({ userId: req.user.id, token, createdAt: nowIso() });
+    res.json({ ok: true });
+  })
+);
+
+// Sign out on every device (lost phone, shared computer…)
+meRouter.post(
+  "/auth/logout-all",
+  ah(async (req, res) => {
+    await auth.revokeRefreshTokens(req.user.id);
+    await db.collection(C.users).doc(req.user.id).update({ lastActiveAt: FieldValue.delete() });
+    await logActivity(req, "auth.logout_all", { summary: "Signed out on all devices" });
     res.json({ ok: true });
   })
 );

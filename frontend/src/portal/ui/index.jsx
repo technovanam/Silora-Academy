@@ -124,9 +124,9 @@ export function StatCard({ icon: Icon, label, value, hint, tone = "gold", onClic
   const toneCls = { gold: "text-[#a77d00] bg-brand-soft", blue: "text-sky-600 bg-sky-50", green: "text-emerald-600 bg-emerald-50", red: "text-rose-600 bg-rose-50", violet: "text-violet-600 bg-violet-50", navy: "text-navy bg-slate-100" }[tone];
   const Comp = onClick ? "button" : "div";
   return (
-    <Comp onClick={onClick} className={cx("group flex min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-white p-5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)]", onClick && "transition hover:border-slate-300 hover:shadow-[0_4px_16px_-8px_rgba(15,23,42,0.15)]")}>
+    <Comp onClick={onClick} className={cx("group flex min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5", onClick && "transition hover:border-slate-300 hover:shadow-[0_4px_16px_-8px_rgba(15,23,42,0.15)]")}>
       <div className="flex items-center justify-between gap-3">
-        <p className="truncate text-[13px] font-medium text-slate-500">{label}</p>
+        <p className="line-clamp-2 text-[13px] font-medium leading-snug text-slate-500">{label}</p>
         {Icon && (
           <span className={cx("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", toneCls)}>
             <Icon className="h-4 w-4" />

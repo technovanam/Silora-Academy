@@ -10,26 +10,58 @@ import { ShieldOff } from "lucide-react";
 import PortalLayout from "./PortalLayout.jsx";
 
 const ClassRoom = lazyPage(() => import("./pages/ClassRoom.jsx"));
+// Each page file loads when it is first opened, so students and teachers never
+// download the admin pages (and the other way round).
+const named = (load, name) => lazyPage(() => load().then((m) => ({ default: m[name] })));
 import { LoginPage, ForgotPasswordPage, ResetPasswordPage, homeFor } from "./pages/AuthPages.jsx";
-import { NotificationsPage, AnnouncementsPage, ProfilePage } from "./pages/SharedPages.jsx";
-import { StudentDashboard, StudentClasses, StudentMaterials, StudentProgress } from "./pages/StudentPages.jsx";
-import { StudentAttendance, TeacherAttendance, AdminAttendance } from "./pages/AttendancePages.jsx";
-import { TeacherDashboard, TeacherCalendar, TeacherStudents, TeacherStudentDetail, TeacherMaterials, TeacherRequests } from "./pages/TeacherPages.jsx";
-import { AdminDashboard, AdminAlerts } from "./pages/admin/AdminDashboard.jsx";
-import { AdminUsersPage, AdminUserDetail, AdminAdminsPage } from "./pages/admin/AdminUsers.jsx";
-import { AdminClasses, AdminRequests } from "./pages/admin/AdminClasses.jsx";
-import { AdminMaterials } from "./pages/admin/AdminContent.jsx";
-import { AdminAnnouncements, AdminNotifications } from "./pages/admin/AdminComms.jsx";
-import { AdminReports, AdminSettings, AdminBackups } from "./pages/admin/AdminSystem.jsx";
-import { AdminRecordings } from "./pages/admin/AdminRecordings.jsx";
-import { StudentRecordings } from "./pages/StudentRecordings.jsx";
-import { MessagesPage, AdminMessagesPage } from "./pages/MessagesPage.jsx";
-import { StudentFees, AdminSessions, AdminFees } from "./pages/FeePages.jsx";
-import { AdminSubjects } from "./pages/admin/AdminSubjects.jsx";
-import { SessionRegister, TeacherSessions } from "./pages/RegisterPages.jsx";
-import { AdminTeacherPayments, TeacherPayments } from "./pages/TeacherPaymentPages.jsx";
-import { AdminDemos, GuestDone, GuestJoin, TeacherDemos } from "./pages/DemoPages.jsx";
-import { AdminTimetable, TeacherTimetable, StudentTimetable } from "./pages/TimetablePages.jsx";
+const NotificationsPage = named(() => import("./pages/SharedPages.jsx"), "NotificationsPage");
+const AnnouncementsPage = named(() => import("./pages/SharedPages.jsx"), "AnnouncementsPage");
+const ProfilePage = named(() => import("./pages/SharedPages.jsx"), "ProfilePage");
+const StudentDashboard = named(() => import("./pages/StudentPages.jsx"), "StudentDashboard");
+const StudentClasses = named(() => import("./pages/StudentPages.jsx"), "StudentClasses");
+const StudentMaterials = named(() => import("./pages/StudentPages.jsx"), "StudentMaterials");
+const StudentProgress = named(() => import("./pages/StudentPages.jsx"), "StudentProgress");
+const StudentAttendance = named(() => import("./pages/AttendancePages.jsx"), "StudentAttendance");
+const TeacherAttendance = named(() => import("./pages/AttendancePages.jsx"), "TeacherAttendance");
+const AdminAttendance = named(() => import("./pages/AttendancePages.jsx"), "AdminAttendance");
+const TeacherDashboard = named(() => import("./pages/TeacherPages.jsx"), "TeacherDashboard");
+const TeacherCalendar = named(() => import("./pages/TeacherPages.jsx"), "TeacherCalendar");
+const TeacherStudents = named(() => import("./pages/TeacherPages.jsx"), "TeacherStudents");
+const TeacherStudentDetail = named(() => import("./pages/TeacherPages.jsx"), "TeacherStudentDetail");
+const TeacherMaterials = named(() => import("./pages/TeacherPages.jsx"), "TeacherMaterials");
+const TeacherRequests = named(() => import("./pages/TeacherPages.jsx"), "TeacherRequests");
+const AdminDashboard = named(() => import("./pages/admin/AdminDashboard.jsx"), "AdminDashboard");
+const AdminAlerts = named(() => import("./pages/admin/AdminDashboard.jsx"), "AdminAlerts");
+const AdminUsersPage = named(() => import("./pages/admin/AdminUsers.jsx"), "AdminUsersPage");
+const AdminUserDetail = named(() => import("./pages/admin/AdminUsers.jsx"), "AdminUserDetail");
+const AdminAdminsPage = named(() => import("./pages/admin/AdminUsers.jsx"), "AdminAdminsPage");
+const AdminClasses = named(() => import("./pages/admin/AdminClasses.jsx"), "AdminClasses");
+const AdminRequests = named(() => import("./pages/admin/AdminClasses.jsx"), "AdminRequests");
+const AdminMaterials = named(() => import("./pages/admin/AdminContent.jsx"), "AdminMaterials");
+const AdminAnnouncements = named(() => import("./pages/admin/AdminComms.jsx"), "AdminAnnouncements");
+const AdminNotifications = named(() => import("./pages/admin/AdminComms.jsx"), "AdminNotifications");
+const AdminReports = named(() => import("./pages/admin/AdminSystem.jsx"), "AdminReports");
+const AdminSettings = named(() => import("./pages/admin/AdminSystem.jsx"), "AdminSettings");
+const AdminBackups = named(() => import("./pages/admin/AdminSystem.jsx"), "AdminBackups");
+const AdminRecordings = named(() => import("./pages/admin/AdminRecordings.jsx"), "AdminRecordings");
+const StudentRecordings = named(() => import("./pages/StudentRecordings.jsx"), "StudentRecordings");
+const MessagesPage = named(() => import("./pages/MessagesPage.jsx"), "MessagesPage");
+const AdminMessagesPage = named(() => import("./pages/MessagesPage.jsx"), "AdminMessagesPage");
+const StudentFees = named(() => import("./pages/FeePages.jsx"), "StudentFees");
+const AdminSessions = named(() => import("./pages/FeePages.jsx"), "AdminSessions");
+const AdminFees = named(() => import("./pages/FeePages.jsx"), "AdminFees");
+const AdminSubjects = named(() => import("./pages/admin/AdminSubjects.jsx"), "AdminSubjects");
+const SessionRegister = named(() => import("./pages/RegisterPages.jsx"), "SessionRegister");
+const TeacherSessions = named(() => import("./pages/RegisterPages.jsx"), "TeacherSessions");
+const AdminTeacherPayments = named(() => import("./pages/TeacherPaymentPages.jsx"), "AdminTeacherPayments");
+const TeacherPayments = named(() => import("./pages/TeacherPaymentPages.jsx"), "TeacherPayments");
+const AdminDemos = named(() => import("./pages/DemoPages.jsx"), "AdminDemos");
+const GuestDone = named(() => import("./pages/DemoPages.jsx"), "GuestDone");
+const GuestJoin = named(() => import("./pages/DemoPages.jsx"), "GuestJoin");
+const TeacherDemos = named(() => import("./pages/DemoPages.jsx"), "TeacherDemos");
+const AdminTimetable = named(() => import("./pages/TimetablePages.jsx"), "AdminTimetable");
+const TeacherTimetable = named(() => import("./pages/TimetablePages.jsx"), "TeacherTimetable");
+const StudentTimetable = named(() => import("./pages/TimetablePages.jsx"), "StudentTimetable");
 
 // The class page loads only when someone opens a class
 
@@ -90,6 +122,7 @@ export default function PortalApp() {
     <AuthProvider>
       <UiProvider>
         <Title />
+        <Suspense fallback={<Loading className="min-h-svh" />}>
         <Routes>
           <Route path="login" element={<LoginPage />} />
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
@@ -169,6 +202,7 @@ export default function PortalApp() {
             <Route path="*" element={<Empty title="Page not found" text="Use the menu to find what you're looking for." />} />
           </Route>
         </Routes>
+        </Suspense>
       </UiProvider>
     </AuthProvider>
   );

@@ -135,7 +135,7 @@ export function TimetableGrid({ entries, onSelect, show = "teacher", timezone })
 }
 
 // ---- Details (everyone) ---------------------------------------------------------------
-export function TimetableDetail({ entry, onClose, timezone, canEdit, onEdit, onDelete, showStudents = true }) {
+export function TimetableDetail({ entry, onClose, timezone, canEdit, onEdit, onDelete, onSchedule, showStudents = true }) {
   return (
     <Dialog
       open={!!entry}
@@ -148,6 +148,11 @@ export function TimetableDetail({ entry, onClose, timezone, canEdit, onEdit, onD
             <Button variant="danger-outline" icon={Trash2} onClick={() => onDelete(entry)}>
               Delete
             </Button>
+            {onSchedule && (
+              <Button variant="outline" onClick={() => onSchedule(entry)}>
+                Schedule classes
+              </Button>
+            )}
             <Button icon={Pencil} onClick={() => onEdit(entry)}>
               Edit
             </Button>

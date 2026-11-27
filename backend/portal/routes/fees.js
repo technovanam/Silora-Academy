@@ -29,7 +29,8 @@ const MAX_PROOF_MB = 10;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_PROOF_MB * 1024 * 1024, files: 1 } });
 
 const link = (f, download) => (f ? fileLink({ path: f.path, fileName: f.fileName, contentType: f.contentType, download }) : null);
-const shapeSubmission = (s) => ({ at: s.at, reference: s.reference || "", paidOn: s.paidOn || "", note: s.note || "", file: { fileName: s.file.fileName, kind: s.file.kind, size: s.file.size, contentType: s.file.contentType }, url: link(s.file), downloadUrl: link(s.file, true) });
+// A submission is the student's upload, or a payment the academy recorded itself (receipt optional)
+const shapeSubmission = (s) => ({ at: s.at, reference: s.reference || "", paidOn: s.paidOn || "", note: s.note || "", recordedByName: s.recordedByName || "", method: s.method || "", file: s.file ? { fileName: s.file.fileName, kind: s.file.kind, size: s.file.size, contentType: s.file.contentType } : null, url: link(s.file), downloadUrl: link(s.file, true) });
 
 // One label for lists: what the admin / student should see
 export function feeLabel(p, sessionActive = true) {
@@ -231,6 +232,8 @@ router.post(
     const reason = str(req.body.reason, 1000);
     if (decision === "rejected" && !reason) fail(400, "Tell the student why the payment details were rejected");
     if (p.verification === decision) return res.json({ ok: true });
+    // Taking back a confirmed payment locks the student's subject again – it must be confirmed
+    if (p.verification === "verified" && decision === "rejected" && req.body.confirmReverse !== true) fail(409, "This payment was already verified. Rejecting it now will lock the student's subject again – confirm to continue.", "confirm_reverse");
     const at = nowIso();
     await ref.update({
       verification: decision,
@@ -251,6 +254,42 @@ router.post(
       link: "/portal/student/fees",
       refId: req.params.id,
     });
+    res.json({ ok: true });
+  })
+);
+
+// ---- Record a payment the academy received directly (cash, bank transfer seen by the office…)
+router.post(
+  "/admin/fees/:id/record",
+  ...feesAdmin,
+  upload.single("file"),
+  ah(async (req, res) => {
+    const ref = db.collection(C.feePayments).doc(req.params.id);
+    const p = (await ref.get()).data();
+    if (!p || p.removed) fail(404, "Payment record not found");
+    if (p.verification === "verified") fail(409, "This payment is already verified");
+    const paidOn = /^\d{4}-\d{2}-\d{2}$/.test(req.body.paidOn || "") ? req.body.paidOn : localDateOf(nowIso());
+    if (paidOn > localDateOf(nowIso())) fail(400, "The payment date can't be in the future");
+    const method = str(req.body.method, 40) || "Paid to the academy";
+    const at = nowIso();
+    const file = req.file ? await storeUpload(`payments/students/${p.sessionId}/${p.studentId}/${Date.now()}-${req.file.originalname}`.replace(/[^\w./-]+/g, "_"), req.file, PROOF_TYPES, MAX_PROOF_MB) : null;
+    const submission = { at, file, reference: str(req.body.reference, 120), paidOn, note: str(req.body.note, 1000), method, recordedBy: req.user.id, recordedByName: req.user.name };
+    await ref.update({
+      submission: "submitted",
+      verification: "verified",
+      rejectReason: "",
+      submittedAt: p.submittedAt || at,
+      verifiedAt: at,
+      verifiedBy: req.user.id,
+      verifiedByName: req.user.name,
+      updatedAt: at,
+      submissions: [...(p.submissions || []), submission].slice(-20),
+      notifications: [...(p.notifications || []), { at, type: "fee_verified", to: "student" }].slice(-50),
+      history: [...(p.history || []), { at, by: req.user.id, byName: req.user.name, action: "recorded_by_academy", method }].slice(-100),
+    });
+    clearFeeCache(p.studentId);
+    await audit(req, "fee.record", { targetType: "feePayment", targetId: req.params.id, summary: `Recorded a payment from ${p.studentName} for ${p.sessionName} (${method})`, meta: { reference: submission.reference, paidOn } });
+    await notify([p.studentId], { type: "fee_verified", title: `Payment received – ${p.subject || p.sessionName}`, body: `The academy recorded your payment for ${p.sessionName}. Thank you!`, link: "/portal/student/fees", refId: req.params.id });
     res.json({ ok: true });
   })
 );

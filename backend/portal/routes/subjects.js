@@ -20,6 +20,12 @@ const canManage = (u) => hasPerm(u, "settings") || hasPerm(u, "users") || hasPer
 const gate = (req) => {
   if (!canManage(req.user)) fail(403, "Your admin account doesn't have this permission");
 };
+// Changing the list (add, rename, archive) needs the settings or users permission;
+// admins with only "sessions" can look at it
+export const canEditSubjects = (u) => hasPerm(u, "settings") || hasPerm(u, "users");
+const editGate = (req) => {
+  if (!canEditSubjects(req.user)) fail(403, "Only admins with the settings or users permission can change the subject list");
+};
 const now = () => new Date().toISOString();
 const people = async () => [...(await usersByRole("teacher")), ...(await usersByRole("student"))].filter((u) => !u.deletedAt);
 const takes = (s, name) => subjectTeachersOf(s).some((r) => sameSubject(r.subject, name));
@@ -145,7 +151,7 @@ router.post(
   "/admin/subjects",
   requireRole("admin"),
   ah(async (req, res) => {
-    gate(req);
+    editGate(req);
     const name = cleanName(req.body.name);
     const list = await getSubjects({ all: true });
     const hit = list.find((s) => sameSubject(s.name, name));
@@ -161,7 +167,7 @@ router.patch(
   "/admin/subjects/:name",
   requireRole("admin"),
   ah(async (req, res) => {
-    gate(req);
+    editGate(req);
     const { list, i, subject } = await findSubject(req.params.name);
     const name = req.body.name === undefined ? subject.name : cleanName(req.body.name);
     const clash = list.find((s, k) => k !== i && sameSubject(s.name, name));
@@ -185,7 +191,7 @@ for (const [action, active] of [["archive", false], ["restore", true]]) {
     `/admin/subjects/:name/${action}`,
     requireRole("admin"),
     ah(async (req, res) => {
-      gate(req);
+      editGate(req);
       const { list, i, subject } = await findSubject(req.params.name);
       if ((subject.active !== false) === active) fail(400, `${subject.name} is already ${active ? "active" : "archived"}`);
       const next = [...list];
@@ -210,7 +216,7 @@ async function renameEverywhere(from, to) {
       changed++;
     }
   }
-  for (const col of [C.meetings, C.timetable, C.materials, C.lessons, C.leaveRequests, C.classAttendance, C.feePayments]) {
+  for (const col of [C.meetings, C.timetable, C.materials, C.lessons, C.leaveRequests, C.classAttendance, C.feePayments, C.recordings, C.demoRequests]) {
     for (const d of listData(await db.collection(col).get())) {
       if (!d.subject || !sameSubject(d.subject, from)) continue;
       const patch = { subject: to };
@@ -225,8 +231,9 @@ async function renameEverywhere(from, to) {
     changed++;
   }
   for (const p of listData(await db.collection(C.teacherPayments).get())) {
-    if (!(p.subjects || []).some((x) => sameSubject(x.subject, from))) continue;
-    await db.collection(C.teacherPayments).doc(p.id).update({ subjects: p.subjects.map((x) => ({ ...x, subject: fix(x.subject) })), ...(p.sessionName ? { sessionName: p.sessionName.replace(p.subjects[0]?.subject || from, to) } : {}) });
+    if (!sameSubject(p.subject, from) && !(p.subjects || []).some((x) => sameSubject(x.subject, from))) continue;
+    const oldName = p.subject || p.subjects?.[0]?.subject || from;
+    await db.collection(C.teacherPayments).doc(p.id).update({ ...(p.subject ? { subject: fix(p.subject) } : {}), subjects: (p.subjects || []).map((x) => ({ ...x, subject: fix(x.subject) })), ...(p.sessionName ? { sessionName: p.sessionName.replace(oldName, to) } : {}) });
     changed++;
   }
   return changed;
@@ -238,7 +245,7 @@ router.put(
   "/admin/subjects",
   requireRole("admin"),
   ah(async (req, res) => {
-    gate(req);
+    editGate(req);
     const before = await getSubjects({ all: true });
     const rows = (Array.isArray(req.body.subjects) ? req.body.subjects : []).slice(0, 200).map((s) => ({ name: str(s?.name, 60), active: s?.active !== false, from: str(s?.from, 60) }));
     if (rows.some((r) => !r.name)) fail(400, "Every subject needs a name");

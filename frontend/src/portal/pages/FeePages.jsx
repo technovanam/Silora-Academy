@@ -56,7 +56,7 @@ export function useFeeStatus(user) {
 }
 
 // Pages that stay open while proof is missing
-const OPEN_PATHS = ["/portal/student/fees", "/portal/profile", "/portal/messages", "/portal/notifications", "/portal/announcements"];
+const OPEN_PATHS = ["/portal/student/fees", "/portal/student/attendance", "/portal/profile", "/portal/messages", "/portal/notifications", "/portal/announcements"];
 export const isLockedPath = (pathname, fee) => {
   if (!fee?.fullyLocked || OPEN_PATHS.some((p) => pathname.startsWith(p))) return false;
   const r = fee.restrictions || {};
@@ -157,6 +157,17 @@ export function FeeReminder({ fee, onLogout }) {
 }
 
 function ProofThumb({ s }) {
+  if (!s.file)
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-line p-2.5 text-sm">
+        <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-6 w-6" /></span>
+        <span className="min-w-0">
+          <span className="block font-medium text-navy">{s.method || "Recorded by the academy"}</span>
+          <span className="block text-xs text-muted">{fmtDateTime(s.at)}{s.recordedByName ? ` · ${s.recordedByName}` : ""}</span>
+          {(s.reference || s.paidOn) && <span className="block text-xs text-muted">{[s.paidOn && `Paid ${fmtDate(`${s.paidOn}T12:00:00`)}`, s.reference && `Ref ${s.reference}`].filter(Boolean).join(" · ")}</span>}
+        </span>
+      </div>
+    );
   const img = s.file.contentType?.startsWith("image/");
   return (
     <a href={s.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-line p-2.5 transition hover:border-slate-300">
@@ -512,7 +523,7 @@ function SessionDetail({ id, onClose, onEdit }) {
     >
       {loading ? <Loading /> : error ? <ErrorBox error={error} onRetry={reload} /> : (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
             <StatCard label="Planned classes" value={s.progress.planned} tone="navy" />
             <StatCard label="Taken" value={s.progress.held} hint={`${s.progress.percent}%`} tone="green" />
             <StatCard label="Still to take" value={s.progress.pending} hint={`${s.progress.upcoming} scheduled`} tone="gold" />
@@ -586,13 +597,31 @@ function PaymentDialog({ row, onClose, onSaved }) {
   const detail = useAsync(() => (row?.submissions ? api.get(`/admin/fees/${row.id}`) : Promise.resolve(null)), [row?.id]);
   const [mode, setMode] = useState(null);
   const [reason, setReason] = useState("");
+  const [rec, setRec] = useState({ paidOn: "", reference: "", method: "Cash", note: "", file: null });
   const [busy, setBusy] = useState(false);
   if (!row) return null;
   const p = detail.data?.payment;
+  const reversing = row.verification === "verified";
+  const record = async () => {
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      for (const k of ["paidOn", "reference", "method", "note"]) if (rec[k]) fd.append(k, rec[k]);
+      if (rec.file) fd.append("file", rec.file);
+      await api.upload(`/admin/fees/${row.id}/record`, fd);
+      ui.toast("Payment recorded – the student was notified");
+      onSaved();
+      onClose();
+    } catch (e) {
+      ui.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   const review = async (decision) => {
     setBusy(true);
     try {
-      await api.post(`/admin/fees/${row.id}/review`, { decision, reason });
+      await api.post(`/admin/fees/${row.id}/review`, { decision, reason, ...(decision === "reject" && reversing ? { confirmReverse: true } : {}) });
       ui.toast(decision === "verify" ? "Marked as received – the student was notified" : "Rejected – the student was notified and must resubmit");
       onSaved();
       onClose();
@@ -614,27 +643,53 @@ function PaymentDialog({ row, onClose, onSaved }) {
           mode === "reject" ? (
             <>
               <Button variant="outline" onClick={() => setMode(null)}>Back</Button>
-              <Button variant="danger" loading={busy} onClick={() => review("reject")}>Reject payment details</Button>
+              <Button variant="danger" loading={busy} onClick={() => review("reject")}>{reversing ? "Reverse and reject" : "Reject payment details"}</Button>
+            </>
+          ) : mode === "record" ? (
+            <>
+              <Button variant="outline" onClick={() => setMode(null)}>Back</Button>
+              <Button icon={CheckCircle2} loading={busy} onClick={record}>Record payment</Button>
             </>
           ) : (
             <>
-              {row.verification !== "rejected" && <Button variant="outline" icon={XCircle} onClick={() => setMode("reject")}>Reject</Button>}
+              {row.verification !== "rejected" && <Button variant="outline" icon={XCircle} onClick={() => setMode("reject")}>{reversing ? "Reverse verification" : "Reject"}</Button>}
+              {row.verification === "rejected" && <Button variant="outline" onClick={() => setMode("record")}>Record payment received</Button>}
               {row.verification !== "verified" && <Button icon={CheckCircle2} loading={busy} onClick={() => review("verify")}>Mark as received / verified</Button>}
             </>
           )
+        ) : mode === "record" ? (
+          <>
+            <Button variant="outline" onClick={() => setMode(null)}>Back</Button>
+            <Button icon={CheckCircle2} loading={busy} onClick={record}>Record payment</Button>
+          </>
         ) : (
-          <Button variant="outline" onClick={onClose}>Close</Button>
+          <>
+            <Button variant="outline" onClick={onClose}>Close</Button>
+            <Button icon={CheckCircle2} onClick={() => setMode("record")}>Record payment received</Button>
+          </>
         )
       }
     >
-      {!row.submissions ? (
-        <Empty icon={Clock} title="No payment details submitted yet" text="The student has been notified about the session fee." />
+      {mode === "record" ? (
+        <div className="space-y-4">
+          <Notice>Use this when the student paid the academy directly (cash, or a bank transfer you have already seen). The payment is marked as verified and the student is notified – they don't need to upload anything.</Notice>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="How was it paid?"><Input value={rec.method} onChange={(e) => setRec((r) => ({ ...r, method: e.target.value }))} maxLength={40} placeholder="Cash, bank transfer, UPI…" /></Field>
+            <Field label="Paid on" hint="Leave empty for today"><Input type="date" value={rec.paidOn} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setRec((r) => ({ ...r, paidOn: e.target.value }))} /></Field>
+            <Field label="Reference (optional)"><Input value={rec.reference} onChange={(e) => setRec((r) => ({ ...r, reference: e.target.value }))} maxLength={120} placeholder="Receipt no. / transaction ID" /></Field>
+            <Field label="Receipt (optional)" hint="PDF or image, max 10 MB"><Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif" onChange={(e) => setRec((r) => ({ ...r, file: e.target.files?.[0] || null }))} /></Field>
+          </div>
+          <Field label="Note (optional)"><Textarea rows={2} value={rec.note} onChange={(e) => setRec((r) => ({ ...r, note: e.target.value }))} maxLength={1000} /></Field>
+        </div>
+      ) : !row.submissions ? (
+        <Empty icon={Clock} title="No payment details submitted yet" text="The student has been notified about the session fee. If they paid the academy directly, record the payment here." />
       ) : detail.loading ? (
         <Loading />
       ) : detail.error ? (
         <ErrorBox error={detail.error} onRetry={detail.reload} />
       ) : (
         <div className="space-y-5">
+          {mode === "reject" && reversing && <Notice tone="danger">This payment was already verified. Rejecting it now locks {row.studentName}&apos;s {row.subject || "session"} classes again until they submit new payment details.</Notice>}
           {mode === "reject" && (
             <Field label="Reason (sent to the student)" required>
               <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} placeholder="e.g. The screenshot doesn't show the amount or the date" autoFocus />
@@ -649,7 +704,7 @@ function PaymentDialog({ row, onClose, onSaved }) {
           {p.submissions.map((s, i) => (
             <div key={i} className={cx("rounded-2xl border p-4", i === 0 ? "border-line" : "border-dashed border-line opacity-80")}>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{i === 0 ? "Latest submission" : `Earlier submission`} · {fmtDateTime(s.at)}</p>
-              {s.file.contentType?.startsWith("image/") ? (
+              {s.file?.contentType?.startsWith("image/") ? (
                 <a href={s.url} target="_blank" rel="noreferrer"><img src={s.url} alt="Payment proof" className="max-h-[420px] w-full rounded-xl border border-line object-contain" /></a>
               ) : (
                 <ProofThumb s={s} />
@@ -658,7 +713,8 @@ function PaymentDialog({ row, onClose, onSaved }) {
                 {s.paidOn && <span>Paid on {fmtDate(`${s.paidOn}T12:00:00`)}</span>}
                 {s.reference && <span>Ref: {s.reference}</span>}
                 {s.note && <span>Note: {s.note}</span>}
-                <a href={s.downloadUrl} className="inline-flex items-center gap-1 font-medium text-navy hover:underline"><Download className="h-4 w-4" />Download</a>
+                {s.recordedByName && <span>Recorded by {s.recordedByName}{s.method ? ` (${s.method})` : ""}</span>}
+                {s.downloadUrl && <a href={s.downloadUrl} className="inline-flex items-center gap-1 font-medium text-navy hover:underline"><Download className="h-4 w-4" />Download</a>}
               </div>
             </div>
           ))}
@@ -679,7 +735,8 @@ function PaymentDialog({ row, onClose, onSaved }) {
 
 function FeeSettings() {
   const ui = useUi();
-  const { data, loading, reload } = useAsync(() => api.get("/admin/fees-settings"), []);
+  const { data, loading, error, reload } = useAsync(() => api.get("/admin/fees-settings"), []);
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (loading || !data) return null;
   const set = async (k, v) => {
     try {
@@ -692,7 +749,7 @@ function FeeSettings() {
   };
   return (
     <Card className="mt-6 max-w-3xl">
-      <CardTitle icon={Settings2} title="While payment details are missing for a subject" subtitle="That subject's classes, live classroom, timetable and attendance are always blocked; other subjects keep working. Profile, messages and notifications always stay open." />
+      <CardTitle icon={Settings2} title="While payment details are missing for a subject" subtitle="Once that subject's session has started, its upcoming classes, live classroom and timetable are blocked (past classes, attendance history and leave requests stay open); other subjects keep working. Profile, messages and notifications always stay open." />
       <div className="space-y-4">
         <Toggle label="Also block materials" checked={data.restrictions.materials} onChange={(v) => set("materials", v)} />
         <Toggle label="Also block recordings" checked={data.restrictions.recordings} onChange={(v) => set("recordings", v)} />
@@ -718,7 +775,7 @@ export function AdminFees() {
       <ErrorBox error={error} onRetry={reload} />
       {loading && !data ? <Loading /> : data && (
         <>
-          <div className="mb-5 grid gap-4 sm:grid-cols-4">
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
             <StatCard icon={Clock} label="To verify" value={data.counts.submitted} tone="blue" onClick={() => setStatus("submitted")} />
             <StatCard icon={CheckCircle2} label="Received / verified" value={data.counts.verified} tone="green" onClick={() => setStatus("verified")} />
             <StatCard icon={XCircle} label="Rejected" value={data.counts.rejected} tone="red" onClick={() => setStatus("rejected")} />
@@ -740,7 +797,7 @@ export function AdminFees() {
                 { key: "studentName", label: "Student", render: (r) => <span><b className="text-navy">{r.studentName}</b><span className="block text-xs text-muted">{[r.studentCode, r.grade].filter(Boolean).join(" · ")}</span></span> },
                 { key: "subject", label: "Subject / session", render: (r) => (r.subject ? <span><b className="text-navy">{r.subject}</b><span className="block text-xs text-muted">Session {r.sessionNumber} · {range(r)}{r.teacherName ? ` · ${r.teacherName}` : ""}</span></span> : r.sessionName) },
                 { key: "status", label: "Status", render: (r) => <FeeBadge status={r.status} /> },
-                { key: "proof", label: "Proof", render: (r) => (r.proof ? <span className="inline-flex items-center gap-1.5 text-sm">{r.proof.file.contentType?.startsWith("image/") ? <ImageIcon className="h-4 w-4 text-slate-400" /> : <FileText className="h-4 w-4 text-slate-400" />}{r.reference || r.proof.file.fileName}</span> : "—") },
+                { key: "proof", label: "Proof", render: (r) => (r.proof ? <span className="inline-flex items-center gap-1.5 text-sm">{r.proof.file?.contentType?.startsWith("image/") ? <ImageIcon className="h-4 w-4 text-slate-400" /> : r.proof.file ? <FileText className="h-4 w-4 text-slate-400" /> : <CheckCircle2 className="h-4 w-4 text-emerald-500" />}{r.reference || r.proof.file?.fileName || r.proof.method || "Recorded by the academy"}</span> : "—") },
                 { key: "submittedAt", label: "Submitted", render: (r) => (r.submittedAt ? <span className="whitespace-nowrap text-sm">{fromNow(r.submittedAt)}</span> : "—") },
                 { key: "verifiedAt", label: "Checked", render: (r) => (r.verifiedAt ? <span className="text-xs text-muted">{fmtDate(r.verifiedAt)}{r.verifiedByName ? ` · ${r.verifiedByName}` : ""}</span> : "—") },
               ]}

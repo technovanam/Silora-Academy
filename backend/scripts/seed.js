@@ -151,7 +151,6 @@ async function seedData(ids) {
     const teacherId = studentId === ids.meera ? ids.arjun : ids.priya;
     await db.collection(C.lessons).add({ studentId, teacherId, subject, topic, status, progress, date: new Date().toISOString().slice(0, 10), comment: "", createdAt: new Date().toISOString() });
   }
-  await db.collection(C.notes).add({ teacherId: ids.priya, studentId: ids.aarav, text: "Strong with algebra, needs more practice with word problems.", pinned: true, createdAt: new Date().toISOString() });
 
   const lastWeek = shiftWeek(weekStartOf(new Date()), -1);
   await db.collection(C.attendance).doc(`${ids.aarav}_${lastWeek}`).set({ studentId: ids.aarav, studentName: "Aarav Sharma", teacherId: ids.priya, weekStart: lastWeek, weekendAttendance: "yes", classesAttended: 3, lessonsCovered: "Linear equations, motion in a straight line", rating: 5, review: "Very clear explanations.", remarks: "", submittedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), late: false, history: [] });

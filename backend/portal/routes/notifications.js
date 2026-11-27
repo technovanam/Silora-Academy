@@ -35,6 +35,31 @@ router.post(
   })
 );
 
+// Remove one of your notifications, or clear all of them
+router.delete(
+  "/notifications/:id",
+  ah(async (req, res) => {
+    const ref = db.collection(C.notifications).doc(req.params.id);
+    const n = (await ref.get()).data();
+    if (!n || n.userId !== req.user.id) fail(404, "Notification not found");
+    await ref.delete();
+    res.json({ ok: true });
+  })
+);
+router.post(
+  "/notifications/clear",
+  ah(async (req, res) => {
+    const qs = await db.collection(C.notifications).where("userId", "==", req.user.id).get();
+    const docs = req.body?.readOnly ? qs.docs.filter((d) => d.data().read) : qs.docs;
+    for (const group of chunk(docs, 400)) {
+      const batch = db.batch();
+      group.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+    res.json({ ok: true, count: docs.length });
+  })
+);
+
 router.post(
   "/notifications/read-all",
   ah(async (req, res) => {
@@ -55,10 +80,9 @@ router.get(
   requireRole("admin"),
   requirePerm("notifications"),
   ah(async (req, res) => {
-    let list = listData(await db.collection(C.notifications).get());
     const days = Number(req.query.days || 14);
     const since = new Date(Date.now() - days * 86400000).toISOString();
-    list = list.filter((n) => n.createdAt >= since);
+    let list = listData(await db.collection(C.notifications).where("createdAt", ">=", since).get());
     if (req.query.type) list = list.filter((n) => n.type === req.query.type);
     if (req.query.channel && req.query.status) list = list.filter((n) => n.channels?.[req.query.channel]?.status === req.query.status);
     else if (req.query.status) list = list.filter((n) => n.status === req.query.status);

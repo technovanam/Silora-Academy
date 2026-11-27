@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, BellOff, CheckCheck, KeyRound, Laptop, Mail, Megaphone, Pin, ShieldCheck, Smartphone } from "lucide-react";
+import { Bell, BellOff, CheckCheck, KeyRound, Laptop, LogOut, Mail, Trash2, Megaphone, Pin, ShieldCheck, Smartphone } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { enablePush } from "../lib/firebase.js";
@@ -10,6 +10,7 @@ import { PasswordInput } from "./AuthPages.jsx";
 
 // ---- Notifications ----------------------------------------------------------------
 export function NotificationsPage() {
+  const ui = useUi();
   const [filter, setFilter] = useState("all");
   const { data, loading, error, reload } = useAsync(() => api.get("/notifications", { limit: 300 }), []);
   const navigate = useNavigate();
@@ -26,13 +27,39 @@ export function NotificationsPage() {
     window.dispatchEvent(new Event("portal:notifications-changed"));
     reload(true);
   };
+  const remove = async (n) => {
+    try {
+      await api.del(`/notifications/${n.id}`);
+      window.dispatchEvent(new Event("portal:notifications-changed"));
+      reload(true);
+    } catch (e) {
+      ui.error(e);
+    }
+  };
+  const clearRead = () =>
+    ui.confirm({
+      title: "Clear read notifications?",
+      message: "Notifications you've already read are removed. Unread ones stay.",
+      confirmLabel: "Clear",
+      onConfirm: async () => {
+        const r = await api.post("/notifications/clear", { readOnly: true });
+        ui.toast(`${r.count} notification${r.count === 1 ? "" : "s"} cleared`);
+        window.dispatchEvent(new Event("portal:notifications-changed"));
+        reload(true);
+      },
+    });
 
   return (
     <>
       <PageHeader
         title="Notifications"
         subtitle="Class reminders, new materials, schedule changes and announcements."
-        actions={data?.unread > 0 && <Button variant="outline" icon={CheckCheck} onClick={readAll}>Mark all as read</Button>}
+        actions={
+          <>
+            {data?.notifications?.length > (data?.unread || 0) && <Button variant="ghost" icon={Trash2} onClick={clearRead}>Clear read</Button>}
+            {data?.unread > 0 && <Button variant="outline" icon={CheckCheck} onClick={readAll}>Mark all as read</Button>}
+          </>
+        }
       />
       <div className="mb-4">
         <Segmented value={filter} onChange={setFilter} options={[{ value: "all", label: "All", count: data?.notifications.length }, { value: "unread", label: "Unread", count: data?.unread }]} />
@@ -46,8 +73,8 @@ export function NotificationsPage() {
         ) : (
           <ul>
             {list.map((n) => (
-              <li key={n.id} className="border-b border-line last:border-0">
-                <button onClick={() => open(n)} className={cx("flex w-full gap-4 px-5 py-4 text-left transition hover:bg-surface sm:px-6", !n.read && "bg-brand-soft/40")}>
+              <li key={n.id} className="group relative border-b border-line last:border-0">
+                <button onClick={() => open(n)} className={cx("flex w-full gap-4 py-4 pl-5 pr-14 text-left transition hover:bg-surface sm:pl-6", !n.read && "bg-brand-soft/40")}>
                   <span className={cx("mt-2 h-2.5 w-2.5 shrink-0 rounded-full", n.read ? "bg-slate-200" : "bg-brand")} />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
@@ -57,6 +84,9 @@ export function NotificationsPage() {
                     <span className="mt-1 block font-semibold text-navy">{n.title}</span>
                     {n.body && <span className="block text-sm text-muted">{n.body}</span>}
                   </span>
+                </button>
+                <button onClick={() => remove(n)} className="absolute right-3 top-4 rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-rose-600" aria-label="Delete notification" title="Delete">
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </li>
             ))}
@@ -126,7 +156,7 @@ export function AnnouncementsPage() {
 
 // ---- Profile -----------------------------------------------------------------------
 export function ProfilePage() {
-  const { user, teachers, settings, reload } = useAuth();
+  const { user, teachers, settings, reload, guestLogin, logout } = useAuth();
   const ui = useUi();
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [busy, setBusy] = useState(false);
@@ -137,14 +167,25 @@ export function ProfilePage() {
     if (pw.next !== pw.confirm) return ui.error(new Error("The new passwords don't match"));
     setBusy(true);
     try {
-      await api.post("/me/password", { currentPassword: pw.current, newPassword: pw.next });
+      const r = await api.post("/me/password", { currentPassword: pw.current, newPassword: pw.next });
       setPw({ current: "", next: "", confirm: "" });
-      ui.toast("Password changed");
-      reload?.();
+      // Other devices were signed out; stay signed in here with the fresh sign-in
+      if (r?.customToken) await guestLogin(r.customToken);
+      else reload?.();
+      ui.toast("Password changed. You've been signed out on your other devices.");
     } catch (err) {
       ui.error(err);
     } finally {
       setBusy(false);
+    }
+  };
+  const logoutEverywhere = async () => {
+    if (!(await ui.confirm({ title: "Sign out on all devices?", message: "You'll be signed out everywhere, including this device, and need to sign in again.", confirmLabel: "Sign out everywhere", danger: true }))) return;
+    try {
+      await api.post("/auth/logout-all");
+      await logout("You've been signed out on all your devices. Sign in again to continue.");
+    } catch (err) {
+      ui.error(err);
     }
   };
   const setPref = async (key, value) => {
@@ -260,6 +301,9 @@ export function ProfilePage() {
             <Notice className="mt-5" icon={Mail}>
               If you see a sign-in you don't recognise, change your password and tell the academy.
             </Notice>
+            <div className="mt-4 flex justify-end">
+              <Button variant="outline" size="sm" icon={LogOut} onClick={logoutEverywhere}>Sign out on all devices</Button>
+            </div>
           </Card>
         </div>
       </div>
