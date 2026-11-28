@@ -89,7 +89,7 @@ const APPROACH = [
 const TEAM = [
   {
     name: "Sameeha",
-    role: "Founder & CEO · Physics Educator",
+    role: "Founder & CEO",
     bio: "Enthusiastic about breaking down intricate Physics topics, empowering learners to thrive academically.",
     img: "https://res.cloudinary.com/dnmvriw3e/image/upload/v1764746980/01-removebg-preview_2_lqhbjc.jpg",
     imgClass: "",
